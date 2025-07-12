@@ -1,28 +1,2519 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Strategy Game</title>
+    <title>Interactive Procedural Planet</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: monospace; cursor: grab; }
+        body.dragging { cursor: grabbing; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; }
+        .ui-panel { position: absolute; padding: 10px; background-color: rgba(0,0,0,0.6); border-radius: 10px; z-index: 100; }
+        #view-controls { top: 10px; left: 10px; display: flex; flex-direction: row; align-items: center; gap: 8px; }
+        .btn { padding: 8px 12px; border: 1px solid; color: #fff; border-radius: 5px; cursor: pointer; font-family: monospace; font-size: 14px; text-align: center;}
+        #view-toggle-btn { background-color: #28a745; border-color: #1e7e34; } #view-toggle-btn:hover { background-color: #218838; }
+        #orbit-toggle-btn { background-color: #17a2b8; border-color: #117a8b; } #orbit-toggle-btn:hover { background-color: #138496; }
+        #moon-toggle-btn, #planet2-toggle-btn { background-color: #6c757d; border-color: #5a6268; } #moon-toggle-btn:hover, #planet2-toggle-btn:hover { background-color: #5a6268; }
+        #game-mode-btn { background-color: #dc3545; border-color: #b22222; } #game-mode-btn:hover { background-color: #c82333; }
+        #controls-container, #game-controls { top: 10px; right: 10px; width: 320px; max-height: 95vh; overflow-y: auto; display: grid; grid-template-columns: 1.2fr 1.8fr 0.5fr; gap: 8px; align-items: center; }
+        #controls-container label, #game-controls label { text-align: right; padding-right: 5px; }
+        #controls-container .value-display, #game-controls .value-display { text-align: left; font-weight: bold; }
+        #controls-container input[type="color"] { width: 100%; height: 25px; padding: 0; border: 1px solid #555; background: none; border-radius: 3px; }
+        #controls-container .separator { grid-column: 1 / -1; text-align: center; padding: 10px 0 5px; margin-top: 5px; border-bottom: 1px solid #555; font-weight: bold; }
+        #zoom-container { bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; }
+        #zoom-slider { width: 200px; }
+        #next-planet-btn { padding: 5px 10px; background-color: #007bff; border-color: #0056b3; color: #fff; border-radius: 5px; cursor: pointer; font-family: monospace; font-size: 14px; }
+        #next-planet-btn:hover { background-color: #0069d9; }
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); display: flex; justify-content: center; align-items: center; z-index: 9999; font-size: 2em; color: #fff; }
+        #game-hud { top: 10px; left: 50%; transform: translateX(-50%); display: none; font-size: 1.2em; }
+        #game-hud span { margin: 0 15px; }
+        #compass-container { width: 40px; height: 40px; display: none; background-color: rgba(0,0,0,0.5); border-radius: 50%; padding: 5px; border: 1px solid #888; }
+        #compass-arrow { width: 100%; height: 100%; transition: transform 0.1s linear; }
+        #game-over-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: none; justify-content: center; align-items: center; z-index: 10000; text-align: center; cursor: pointer; }
+        #game-over-screen h1 { font-size: 5em; margin: 0; color: #dc3545; }
+        #game-over-screen p { font-size: 2em; }
+        a { color: #00ffff; }
+
+        /* --- Intro Page --- */
+        #intro-page {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10001;
+            cursor: pointer;
+            font-family: monospace;
+        }
+        #intro-content {
+            max-width: 800px;
+            padding: 20px;
+        }
+        #intro-page h1 {
+            font-size: 4em;
+            margin-bottom: 20px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        #intro-page .info-text {
+            font-size: 1.2em;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            color: #ccc;
+        }
+        #intro-page .disclaimer-text {
+            font-size: 0.9em;
+            line-height: 1.4;
+            color: #777;
+            border-top: 1px solid #444;
+            padding-top: 20px;
+        }
+
+
+        /* --- Items Menu & Tower Controls --- */
+        #items-menu-panel, #tower-controls-panel, #color-picker-panel {
+            position: absolute;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            width: 380px;
+            background-color: rgba(0,0,0,0.75);
+            border: 2px solid #666;
+            border-radius: 10px;
+            padding: 15px;
+            display: none;
+            z-index: 200;
+        }
+        #tower-controls-panel, #color-picker-panel {
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+        }
+        #items-menu-panel h2, #tower-controls-panel h2, #color-picker-panel h2 {
+            text-align: center;
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #666;
+        }
+        #items-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .item-card {
+            background-color: rgba(255,255,255,0.05);
+            border: 2px solid #444;
+            border-radius: 5px;
+            padding: 10px;
+            text-align: center;
+            transition: border-color 0.2s;
+            cursor: pointer;
+        }
+        .item-card h3 { margin: 0 0 5px 0; font-size: 1.1em; color: #fff; }
+        .item-card p { margin: 0; color: #FFD700; font-weight: bold; }
+        .item-card.selected { border-color: #00ffff; background-color: rgba(0, 255, 255, 0.1); }
+        .controls-info { text-align: center; margin-top: 15px; padding-top: 10px; border-top: 1px solid #666; color: #aaa; }
+
+        .slider-container { display: grid; grid-template-columns: 1fr 2fr 0.5fr; gap: 10px; align-items: center; padding: 10px 0; }
+        #color-picker-panel input[type="color"] { width: 100%; height: 30px; padding: 0; border: 1px solid #555; background: none; border-radius: 3px; }
+
+        #interaction-prompt { position: absolute; bottom: 20px; width: 100%; text-align: center; font-size: 1.5em; color: #fff; text-shadow: 0 0 5px #000; z-index: 150; display: none; }
+        #removal-prompt { z-index: 250; font-size: 1.3em; }
+
+        /* --- Stock Market Styles --- */
+        #stock-market-panel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            background-color: rgba(0,0,0,0.85);
+            border: 2px solid #888;
+            border-radius: 10px;
+            padding: 20px;
+            display: none;
+            z-index: 200;
+            text-align: center;
+        }
+        #stock-market-panel h2 { margin-top: 0; border-bottom: 1px solid #888; padding-bottom: 10px; }
+        #stock-chart { background-color: rgba(255,255,255,0.05); border: 1px solid #555; border-radius: 5px; margin-bottom: 15px; }
+        #stock-market-info { display: flex; justify-content: space-around; font-size: 1.1em; margin-bottom: 15px; }
+        #stock-market-controls { display: flex; justify-content: center; gap: 40px; font-size: 1.2em; }
+        .market-action { padding: 10px 20px; border: 2px solid #666; border-radius: 8px; }
+        .market-action.selected { border-color: #00ffff; background-color: rgba(0, 255, 255, 0.15); }
+        #stock-market-panel .fee-info { font-size: 0.9em; color: #aaa; margin-top: 15px; }
+
     </style>
 </head>
 <body>
-    <!-- We will render our 3D scene here -->
-    <div id="container"></div>
+    <div id="intro-page">
+        <div id="intro-content">
+            <h1>THE PLANET COMMANDER</h1>
+            <p class="info-text">You are controlling the robot in a distant solar system. You must collect ore and build your base. Watch out for the enemy troops!<br/><br/>Modify the planet at your will and press ‘Play’. If the playing controls are weird, exit the game and generate a new planet. Move the robot with WASD. Q is for item list. F changes the camera view. E executes.<br/><br/><b>Click mouse or space to start editing the planet.</b></p>
+            <p class="disclaimer-text"><b>Disclaimer:</b> For the game aesthetics and because of the limited computing power, this is not a real physical representation. Orbits are fixed. Gravity generated by mass and heat generated by gravity and light are not calculated. The masses and speeds should affect the distances. Everything should rotate around the system’s center of gravity. The planet's rotation is intentionally stopped when you enter game mode. This makes it easier to control the robot on a stable surface.</p>
+        </div>
+    </div>
 
-    <!-- Import Three.js Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div id="loading-overlay"><span>Loading...</span></div>
+    <div id="info"><b>Controls:</b> Mouse Drag (Planet), Arrows/WASD (Planet/System View))</div>
     
-    <!-- Add-on for camera controls (zoom/rotate) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    
-    <!-- Add-on for procedural noise generation -->
-    <script src="https://cdn.jsdelivr.net/npm/simplex-noise@3.0.0/dist/simplex-noise.min.js"></script>
+    <div id="game-over-screen">
+        <div>
+            <h1>GAME OVER</h1>
+            <p>Press SPACE or CLICK to start a new game</p>
+        </div>
+    </div>
 
-    <!-- Our main game script, loaded as a module -->
-    <script type="module" src="main.js"></script>
+    <div id="game-hud" class="ui-panel">
+        <span id="hud-year">Year: 1</span>
+        <span id="hud-energy">Energy: 100%</span>
+        <span id="hud-ore">Ore Collected: 0</span>
+        <span id="hud-stocks">Stocks: 0</span>
+    </div>
+
+    <div id="stock-market-panel">
+        <h2>Galactic Stock Exchange</h2>
+        <canvas id="stock-chart" width="560" height="200"></canvas>
+        <div id="stock-market-info">
+            <span id="market-current-price">Price: 5 Ore</span>
+            <span id="market-player-ore">Your Ore: 0</span>
+            <span id="market-player-stocks">Your Stocks: 0</span>
+        </div>
+        <div id="stock-market-controls">
+            <div id="market-buy-btn" class="market-action selected">BUY [E]</div>
+            <div id="market-sell-btn" class="market-action">SELL [E]</div>
+        </div>
+        <div class="fee-info">A fee of 2 Ore applies to all transactions.</div>
+        <div class="controls-info">[A/D] Select | [Q] Close</div>
+    </div>
+
+
+    <div id="items-menu-panel">
+        <h2>Build Menu</h2>
+        <div id="items-grid"></div>
+        <div class="controls-info">[WASD] Navigate | [E] Place | [Q] Close</div>
+    </div>
+    
+    <div id="tower-controls-panel">
+        <h2>Tower Controls</h2>
+        <div class="slider-container">
+            <label for="tower-light-slider">Intensity:</label>
+            <input type="range" min="0" max="20000" value="3000" step="100" id="tower-light-slider">
+            <span id="tower-light-value">3000</span>
+        </div>
+        <div class="controls-info">[Q] Close</div>
+    </div>
+
+    <div id="color-picker-panel" class="ui-panel">
+        <h2>Building Color</h2>
+        <div class="slider-container">
+            <label for="building-color-picker">Color:</label>
+            <input type="color" id="building-color-picker" value="#8B4513">
+            <span></span>
+        </div>
+        <div class="controls-info">[Q] Close</div>
+    </div>
+
+    <div id="interaction-prompt"></div>
+    <div id="removal-prompt" class="ui-panel" style="display: none; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: 20px;"></div>
+
+    <div id="view-controls" class="ui-panel">
+        <div id="compass-container">
+            <img id="compass-arrow" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22white%22%3E%3Cpath%20d%3D%22M12%202L4.5%2020.29l.71.71L12%2018l6.79%203%20.71-.71z%22/%3E%3C/svg%3E" alt="Compass Arrow">
+        </div>
+        <button id="game-mode-btn" class="btn">Play</button>
+        <button id="view-toggle-btn" class="btn">Toggle View</button>
+        <button id="orbit-toggle-btn" class="btn" style="display: none;">Hide Orbit</button>
+        <button id="moon-toggle-btn" class="btn">Hide Moon</button>
+        <button id="planet2-toggle-btn" class="btn">Hide Planet 2</button>
+    </div>
+
+    <div id="game-controls" class="ui-panel" style="display: none;">
+        <label for="robot-light-slider">Headlight:</label><input type="range" min="0" max="50000" value="5000" step="100" id="robot-light-slider"><span id="robot-light-value" class="value-display">5000</span>
+    </div>
+
+    <div id="controls-container" class="ui-panel">
+        <div class="separator">Game</div>
+        <label for="enemy-spawn-slider">Spawn Interval:</label><input type="range" min="5" max="60" value="15" step="1" id="enemy-spawn-slider"><span id="enemy-spawn-value" class="value-display">15s</span>
+        <label for="energy-drain-slider">Energy Drain:</label><input type="range" min="0.5" max="10" value="2.5" step="0.1" id="energy-drain-slider"><span id="energy-drain-value" class="value-display">2.5</span>
+        
+        <div class="separator">System</div>
+        <label for="orbital-speed-slider">Orbit Speed:</label><input type="range" min="0" max="2" value="0.2" step="0.01" id="orbital-speed-slider"><span id="orbital-speed-value" class="value-display">0.20</span>
+        <label for="sun-size-slider">Sun Size:</label><input type="range" min="0.5" max="9" value="3" step="0.1" id="sun-size-slider"><span id="sun-size-value" class="value-display">3.0</span>
+        <label for="sun-distance-slider">Sun Distance:</label><input type="range" min="400" max="5000" value="1200" step="10" id="sun-distance-slider"><span id="sun-distance-value" class="value-display">1200</span>
+        <label for="ellipse-ratio-slider">Ellipse Ratio:</label><input type="range" min="0.1" max="1.0" value="0.47" step="0.01" id="ellipse-ratio-slider"><span id="ellipse-ratio-value" class="value-display">0.47</span>
+        <label for="focus-offset-slider">Focus Offset:</label><input type="range" min="0" max="1" value="0.26" step="0.01" id="focus-offset-slider"><span id="focus-offset-value" class="value-display">0.26</span>
+        <label for="light-slider">Sun Light:</label><input type="range" min="0.0" max="4000000" value="500000" step="1000" id="light-slider"><span id="light-value" class="value-display">500k</span>
+        <label for="star-count-slider">Star Count:</label><input type="range" min="0" max="20000" value="10000" step="100" id="star-count-slider"><span id="star-count-value">500</span>
+        <label for="starlight-intensity-slider">Starlight:</label><input type="range" min="0.0" max="0.5" value="0.21" step="0.01" id="starlight-intensity-slider"><span id="starlight-intensity-value">0.21</span>
+        
+        <div class="separator">Planet 2</div>
+        <label for="planet2-rotation-speed-slider">Rotation:</label><input type="range" min="0.0" max="1.0" value="0.1" step="0.01" id="planet2-rotation-speed-slider"><span id="planet2-rotation-speed-value">0.10</span>
+        <label for="planet2-size-slider">Size:</label><input type="range" min="10" max="200" value="50" step="1" id="planet2-size-slider"><span id="planet2-size-value">50</span>
+        <label for="planet2-distance-slider">Distance:</label><input type="range" min="1600" max="8000" value="1800" step="10" id="planet2-distance-slider"><span id="planet2-distance-value">1800</span>
+        <label for="planet2-color-picker">Color:</label><input type="color" id="planet2-color-picker" value="#ff8c00"><span></span>
+        
+        <div class="separator">Moon</div>
+        <label for="moon-rotation-speed-slider">Rotation Speed:</label><input type="range" min="0" max="5" value="0.2" step="0.1" id="moon-rotation-speed-slider"><span id="moon-rotation-speed-value" class="value-display">0.2</span>
+        <label for="moon-size-slider">Moon Size:</label><input type="range" min="5" max="40" value="15" step="1" id="moon-size-slider"><span id="moon-size-value" class="value-display">15</span>
+        <label for="moon-distance-slider">Moon Distance:</label><input type="range" min="120" max="500" value="180" step="5" id="moon-distance-slider"><span id="moon-distance-value" class="value-display">180</span>
+        <label for="moon-reflection-slider">Reflection:</label><input type="range" min="0" max="1" value="1" step="0.01" id="moon-reflection-slider"><span id="moon-reflection-value">1</span>
+        
+        <div class="separator">Planet 1</div>
+        <label for="rotation-speed-slider">Rotation Speed:</label><input type="range" min="0.0" max="1.0" value="0.01" step="0.01" id="rotation-speed-slider"><span id="rotation-speed-value" class="value-display">0.01</span>
+        <label for="radius-slider">Radius:</label><input type="range" min="10" max="200" value="100" step="1" id="radius-slider"><span id="radius-value" class="value-display">100</span>
+        <label for="water-level-slider">Water Level:</label><input type="range" min="-1.0" max="1.0" value="-0.60" step="0.01" id="water-level-slider"><span id="water-level-value" class="value-display">-0.60</span>
+        <label for="snow-level-slider">Snow Level:</label><input type="range" min="0.0" max="2.0" value="0.98" step="0.01" id="snow-level-slider"><span id="snow-level-value" class="value-display">0.98</span>
+        <label for="mountain-height-slider">Mtn Height:</label><input type="range" min="0.1" max="5.0" value="1.0" step="0.1" id="mountain-height-slider"><span id="mountain-height-value" class="value-display">1.0</span>
+        <label for="terrain-detail-slider">Detail:</label><input type="range" min="5" max="250" value="80" step="1" id="terrain-detail-slider"><span id="terrain-detail-value" class="value-display">80</span>
+        <label for="tree-count-slider">Trees:</label><input type="range" min="0" max="50000" value="850" step="1" id="tree-count-slider"><span id="tree-count-value" class="value-display">850</span>
+        <label for="rock-count-slider">Rocks:</label><input type="range" min="0" max="20000" value="650" step="1" id="rock-count-slider"><span id="rock-count-value" class="value-display">650</span>
+        <label for="ore-count-slider">Ore:</label><input type="range" min="0" max="20000" value="3000" step="1" id="ore-count-slider"><span id="ore-count-value" class="value-display">3000</span>
+
+        <div class="separator">Colors</div>
+        <label for="sky-color">Sky:</label><input type="color" id="sky-color"><span></span>
+        <label for="water-color">Water:</label><input type="color" id="water-color"><span></span>
+        <label for="sand-color">Sand:</label><input type="color" id="sand-color"><span></span>
+        <label for="grass-color">Grass:</label><input type="color" id="grass-color"><span></span>
+        <label for="snow-color">Snow:</label><input type="color" id="snow-color"><span></span>
+        <label for="trunk-color">Trunk:</label><input type="color" id="trunk-color"><span></span>
+        <label for="leaves-color">Leaves:</label><input type="color" id="leaves-color"><span></span>
+        <label for="rock-color">Rock:</label><input type="color" id="rock-color"><span></span>
+        <label for="ore-color">Ore:</label><input type="color" id="ore-color"><span></span>
+    </div>
+
+    <div id="zoom-container" class="ui-panel">
+        <label for="zoom-slider">Zoom:</label>
+        <input type="range" min="30" max="1500" value="200" step="1" id="zoom-slider">
+        <span id="zoom-value" class="value-display">200</span>
+        <button id="next-planet-btn" class="btn">Generate New Planet</button>
+    </div>
+
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+
+    <script>
+        // --- SCENE & CORE ---
+        let scene, camera, renderer, clock, raycaster;
+        let menuScene, menuCamera;
+        let sun, pointLight, ambientLight;
+        let planet, water, orbitalPivot, orbitLine, northIceCap, southIceCap;
+        let planet2, orbitalPivot2, orbitLine2;
+        let moon, moonPivot, moonLight;
+        let simplex, loadingOverlay, stars;
+        let minOrbitDist = 0, maxOrbitDist = 0;
+
+        // --- GAME MODE ---
+        let isGameMode = false, isMenuOpen = false, isGameOver = false, isTowerMenuOpen = false, isStockMarketOpen = false, isColorPickerOpen = false, isRemovalPromptActive = false;
+        let robot, robotHeadlight;
+        let harvesters = [], troopers = [], trooperTowers = [], enemies = [], projectiles = [], particles = [];
+        let residentHouses = [], tradeCenters = [], residentSkyscrapers = [], watchTowers = [];
+        let robotCameraMode = 'satellite';
+        let robotEnergy = 100, oreCollected = 0, playerStocks = 0;
+        let stockPrice = 5, stockPriceHistory = [5];
+        const stockMarketFee = 2;
+        let gameYear = 1, lastYearAngle = 0;
+        const robotSpeed = 25.0, robotTurnSpeed = 1.5;
+        let gameHud, hudEnergy, hudOre, hudYear, hudStocks, gameControls, gameOverScreen;
+        let itemsMenuPanel, itemsGrid, selectedItemIndex = 0, menuDisplayObject = null;
+        let towerControlsPanel, nearbyTower = null, activeTower = null, interactionPrompt;
+        let stockMarketPanel, stockChart, stockChartCtx, nearbyTradeCenter = null, stockMarketSelection = 'buy';
+        let colorPickerPanel, buildingColorPicker, nearbyBuilding = null, activeBuilding = null;
+        let removalPrompt, itemToRemove = null;
+        const menuGridCols = 2;
+        let compassContainer, compassArrow;
+        let enemySpawnTimer = 0;
+
+
+        // --- SOLAR SYSTEM & CAMERA ---
+        let cameraMode = 'planet';
+        let orbitalAngle = 0, orbitalAngle2 = 1.5;
+        let systemCameraAngleY = Math.PI / 4;
+        const systemCameraAngleSpeed = 1.0;
+
+        // --- PARAMETERS ---
+        const planetParams = { enemySpawnInterval: 15, robotEnergyConsumption: 2.5, orbitalSpeed: 0.2, sunSize: 3.0, sunDistance: 1200, ellipseRatio: 0.47, focusOffset: 0.26, lightIntensity: 500000, starCount: 500, starlightIntensity: 0.21, planet2Visible: true, planet2RotationSpeed: 0.1, planet2Size: 50, orbitalDistance2: 1800, planet2Color: '#ff8c00', orbitalSpeed2: 0.15, moonVisible: true, moonRotationSpeed: 0.2, moonSize: 15, moonDistance: 180, moonReflection: 1, rotationSpeed: 0.01, radius: 100, waterLevel: -0.10, snowLevel: 1.20, mountainHeight: 1.0, terrainDetail: 80, treeCount: 850, rockCount: 650, oreCount: 3000, skyColor: '#050510', sandColor: '#C2B280', grassColor: '#76B947', snowColor: '#FFFAFA', waterColor: '#006994', trunkColor: '#8B4513', leavesColor: '#228B22', rockColor: '#808080', oreColor: '#FFD700' };
+
+        // --- PLANET ROTATION ---
+        let planetAngularVelocity = new THREE.Vector3();
+        const rotationAcceleration = 4.0; const rotationDamping = 2.5;
+        const autoRotationAxis = new THREE.Vector3(0.1, 1, 0).normalize();
+
+        // --- CAMERA & INPUT ---
+        let cameraZoomDistance;
+        const keys = {}; window.addEventListener('keydown', (e) => (keys[e.key.toLowerCase()] = true)); window.addEventListener('keyup', (e) => (keys[e.key.toLowerCase()] = false));
+        let isDragging = false; const previousMousePosition = { x: 0, y: 0 }; const mouseSensitivity = 0.005;
+
+        // --- RANDOMIZED SIMPLEX NOISE (Unchanged) ---
+        function createSimplexNoise() {const t=(t)=>{let e=t.length;for(;e;){let o=Math.floor(Math.random()*e--);[t[e],t[o]]=[t[o],t[e]]}return t};const e=1/3,o=1/6;const a=[new THREE.Vector3(1,1,0),new THREE.Vector3(-1,1,0),new THREE.Vector3(1,-1,0),new THREE.Vector3(-1,-1,0),new THREE.Vector3(1,0,1),new THREE.Vector3(-1,0,1),new THREE.Vector3(1,0,-1),new THREE.Vector3(-1,0,-1),new THREE.Vector3(0,1,1),new THREE.Vector3(0,-1,1),new THREE.Vector3(0,1,-1),new THREE.Vector3(0,-1,-1)];const n=new Uint8Array(256);for(let t=0;t<256;t++)n[t]=t;t(n);const r=new Uint8Array(512);for(let t=0;t<256;t++)r[t]=r[t+256]=n[t];function l(t,e,o,a){return t.x*e+t.y*o+t.z*a}return{noise:(t,s,c)=>{let i,d,u,h;const m=(t+s+c)*e,p=Math.floor(t+m),f=Math.floor(s+m),g=Math.floor(c+m),y=(p+f+g)*o,v=p-y,w=f-y,b=g-y,x=t-v,T=s-w,V=c-b;let L,M,A,C,E,S;x>=T?T>=V?(L=1,M=0,A=0,C=1,E=1,S=0):x>=V?(L=1,M=0,A=0,C=1,E=0,S=1):(L=0,M=0,A=1,C=1,E=0,S=1):T<V?(L=0,M=0,A=1,C=0,E=1,S=1):x<V?(L=0,M=1,A=0,C=0,E=1,S=1):(L=0,M=1,A=0,C=1,E=1,S=0);const k=x-L+o,D=T-M+o,B=V-A+o,H=x-C+2*o,I=T-E+2*o,N=V-S+2*o,P=x-1+3*o,O=T-1+3*o,R=V-1+3*o,q=255&p,z=255&f,W=255&g,F=r[q+r[z+r[W]]]%12,G=r[q+L+r[z+M+r[W+A]]]%12,J=r[q+C+r[z+E+r[W+S]]]%12,K=r[q+1+r[z+1+r[W+1]]]%12;let Q=.6-x*x-T*T-V*V;i=Q<0?0:Q*Q*Q*Q*l(a[F],x,T,V);let U=.6-k*k-D*D-B*B;d=U<0?0:U*U*U*U*l(a[G],k,D,B);let X=.6-H*H-I*I-N*N;u=X<0?0:X*X*X*X*l(a[J],H,I,N);let Y=.6-P*P-O*O-R*R;return h=Y<0?0:Y*Y*Y*Y*l(a[K],P,O,R),32*(i+d+u+h)}}}
+
+        function init() {
+            const introPage = document.getElementById('intro-page');
+            loadingOverlay = document.getElementById('loading-overlay');
+            loadingOverlay.style.display = 'none';
+
+            function dismissIntro() {
+                introPage.style.display = 'none';
+                window.removeEventListener('click', dismissIntro);
+                window.removeEventListener('keyup', handleIntroKey);
+            }
+            function handleIntroKey(e) {
+                if (e.key === ' ') {
+                    dismissIntro();
+                }
+            }
+            window.addEventListener('click', dismissIntro);
+            window.addEventListener('keyup', handleIntroKey);
+            
+            scene = new THREE.Scene(); scene.background = new THREE.Color(planetParams.skyColor);
+            menuScene = new THREE.Scene();
+            clock = new THREE.Clock(); 
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+            menuCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+            menuCamera.position.z = 10;
+            renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.setPixelRatio(window.devicePixelRatio); document.body.appendChild(renderer.domElement);
+            
+            gameHud = document.getElementById('game-hud'); 
+            hudEnergy = document.getElementById('hud-energy'); 
+            hudOre = document.getElementById('hud-ore');
+            hudYear = document.getElementById('hud-year');
+            hudStocks = document.getElementById('hud-stocks');
+            gameControls = document.getElementById('game-controls');
+            gameOverScreen = document.getElementById('game-over-screen');
+            itemsMenuPanel = document.getElementById('items-menu-panel');
+            itemsGrid = document.getElementById('items-grid');
+            towerControlsPanel = document.getElementById('tower-controls-panel');
+            colorPickerPanel = document.getElementById('color-picker-panel');
+            buildingColorPicker = document.getElementById('building-color-picker');
+            interactionPrompt = document.getElementById('interaction-prompt');
+            removalPrompt = document.getElementById('removal-prompt');
+            compassContainer = document.getElementById('compass-container');
+            compassArrow = document.getElementById('compass-arrow');
+            stockMarketPanel = document.getElementById('stock-market-panel');
+            stockChart = document.getElementById('stock-chart');
+            stockChartCtx = stockChart.getContext('2d');
+            raycaster = new THREE.Raycaster();
+
+            ambientLight = new THREE.AmbientLight(0xffffff, planetParams.starlightIntensity);
+            scene.add(ambientLight);
+            createStars();
+
+            sun = new THREE.Mesh(new THREE.SphereGeometry(50, 64, 64), new THREE.MeshBasicMaterial({ color: 0xffdd88 })); scene.add(sun);
+            pointLight = new THREE.PointLight(0xffffff, planetParams.lightIntensity, 0, 1.5); scene.add(pointLight);
+            menuScene.add(new THREE.AmbientLight(0xffffff, 1.0));
+            menuScene.add(new THREE.PointLight(0xffffff, 300, 100));
+
+
+            orbitalPivot = new THREE.Object3D(); scene.add(orbitalPivot);
+            orbitLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 })); orbitLine.rotation.x = Math.PI / 2; scene.add(orbitLine);
+            moonPivot = new THREE.Object3D(); moon = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 5 })); moonPivot.add(moon);
+            
+            moonLight = new THREE.PointLight(0x7777aa, 0, 800);
+            moonPivot.add(moonLight);
+
+            orbitalPivot2 = new THREE.Object3D(); scene.add(orbitalPivot2);
+            planet2 = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshPhongMaterial({ color: planetParams.planet2Color, shininess: 10 })); orbitalPivot2.add(planet2);
+            orbitLine2 = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xff8c00, transparent: true, opacity: 0.5 })); orbitLine2.rotation.x = Math.PI / 2; scene.add(orbitLine2);
+            
+            createItemsMenuHTML();
+            updateOrbitLine(); updateOrbitLine2();
+            setupUI(); setupMouseControls(); generateNewPlanet();
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('keyup', handleGlobalKeyUp);
+            gameOverScreen.addEventListener('click', () => {
+                if (isGameOver) {
+                    endGame();
+                    startGame();
+                }
+            });
+            
+            renderer.domElement.addEventListener('click', () => {
+                if (isGameMode && !isMenuOpen && !isTowerMenuOpen && !isStockMarketOpen && !isColorPickerOpen) {
+                    renderer.domElement.requestPointerLock();
+                }
+            });
+            document.addEventListener('mousemove', handleRobotMouseMove, false);
+        }
+
+        function handleRobotMouseMove(event) {
+            if (!isGameMode || isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive || !robot) return;
+            if (document.pointerLockElement === renderer.domElement) {
+                const turnSensitivity = 0.002;
+                if (robot.userData.isAtTowerTop) {
+                    robot.userData.towerViewYaw -= event.movementX * turnSensitivity;
+                    robot.userData.towerViewPitch -= event.movementY * turnSensitivity;
+                    robot.userData.towerViewPitch = THREE.MathUtils.clamp(robot.userData.towerViewPitch, -Math.PI / 2.1, Math.PI / 2.1);
+                } else {
+                    robot.rotateY(-event.movementX * turnSensitivity);
+                }
+            }
+        }
+
+        function handleGlobalKeyUp(e) {
+            const key = e.key.toLowerCase();
+            if (isGameOver && key === ' ') {
+                endGame();
+                startGame();
+                return;
+            }
+
+            if (isGameMode && !isGameOver) {
+                 if (isRemovalPromptActive) {
+                    if (key === 'y') removeItem();
+                    else if (key === 'n') cancelRemoval();
+                    return;
+                }
+                
+                if (isMenuOpen) {
+                    let newIndex = selectedItemIndex;
+                    if (key === 'w' || key === 'arrowup') newIndex -= menuGridCols;
+                    if (key === 's' || key === 'arrowdown') newIndex += menuGridCols;
+                    if (key === 'a' || key === 'arrowleft') newIndex -= 1;
+                    if (key === 'd' || key === 'arrowright') newIndex += 1;
+
+                    if (newIndex !== selectedItemIndex) {
+                        selectedItemIndex = Math.max(0, Math.min(newIndex, buildableItems.length - 1));
+                        updateMenuSelection();
+                    }
+                    if (key === 'e') placeSelectedItem();
+                    if (key === 'q') toggleItemsMenu();
+
+                } else if (isTowerMenuOpen) {
+                    if (key === 'q') toggleTowerControls();
+                
+                } else if (isColorPickerOpen) {
+                    if (key === 'q') toggleColorPicker();
+
+                } else if (isStockMarketOpen) {
+                    if (key === 'q') toggleStockMarket();
+                    if (key === 'a' || key === 'd') {
+                        stockMarketSelection = stockMarketSelection === 'buy' ? 'sell' : 'buy';
+                        updateStockMarketSelectionUI();
+                    }
+                    if (key === 'e') {
+                        if (stockMarketSelection === 'buy') buyStock();
+                        else sellStock();
+                    }
+
+                } else {
+                    if (key === 'q') toggleItemsMenu();
+                    if (key === 'e' && nearbyTradeCenter) toggleStockMarket();
+                    else if (key === 'e' && nearbyTower) toggleTowerControls();
+                    else if (key === 'e' && nearbyBuilding) toggleColorPicker();
+                    else if (key === 'e' && (robot.userData.nearbyWatchTower || robot.userData.isAtTowerTop)) {
+                        toggleWatchTowerElevator(robot.userData.currentWatchTower || robot.userData.nearbyWatchTower);
+                    }
+                    
+                    if (key === 'f') robotCameraMode = robotCameraMode === 'satellite' ? 'commander' : 'satellite';
+                    if (key === 'r') promptToRemoveItem();
+                }
+            }
+        }
+
+        function setupUI() {
+            const starlightCallback = () => { 
+                if (ambientLight) ambientLight.intensity = planetParams.starlightIntensity; 
+                if (planet && planet.material.uniforms.starlightIntensity) planet.material.uniforms.starlightIntensity.value = planetParams.starlightIntensity;
+            };
+            const sliders = { enemySpawnInterval: { el: 'enemy-spawn-slider', val: 'enemy-spawn-value', fix: 0, customDisplay: v => `${v}s` }, robotEnergyConsumption: { el: 'energy-drain-slider', val: 'energy-drain-value', fix: 1 }, orbitalSpeed: { el: 'orbital-speed-slider', val: 'orbital-speed-value', fix: 2 }, sunSize: { el: 'sun-size-slider', val: 'sun-size-value', fix: 1 }, sunDistance: { el: 'sun-distance-slider', val: 'sun-distance-value', fix: 0, callback: updateOrbitLine }, ellipseRatio: { el: 'ellipse-ratio-slider', val: 'ellipse-ratio-value', fix: 2, callback: updateOrbitLine }, focusOffset: { el: 'focus-offset-slider', val: 'focus-offset-value', fix: 2, callback: updateOrbitLine }, lightIntensity: { el: 'light-slider', val: 'light-value', fix: 0, customDisplay: v => `${Math.round(v/1000)}k` }, starCount: {el: 'star-count-slider', val: 'star-count-value', fix: 0, callback: regenerateStars }, starlightIntensity: {el: 'starlight-intensity-slider', val: 'starlight-intensity-value', fix: 2, callback: starlightCallback}, planet2RotationSpeed: { el: 'planet2-rotation-speed-slider', val: 'planet2-rotation-speed-value', fix: 2 }, planet2Size: { el: 'planet2-size-slider', val: 'planet2-size-value', fix: 0 }, orbitalDistance2: { el: 'planet2-distance-slider', val: 'planet2-distance-value', fix: 0, callback: updateOrbitLine2 }, moonRotationSpeed: { el: 'moon-rotation-speed-slider', val: 'moon-rotation-speed-value', fix: 1 }, moonSize: { el: 'moon-size-slider', val: 'moon-size-value', fix: 0 }, moonDistance: { el: 'moon-distance-slider', val: 'moon-distance-value', fix: 0 }, moonReflection: { el: 'moon-reflection-slider', val: 'moon-reflection-value', fix: 2 }, rotationSpeed: { el: 'rotation-speed-slider', val: 'rotation-speed-value', fix: 2 }, radius: { el: 'radius-slider', val: 'radius-value', fix: 0 }, waterLevel: { el: 'water-level-slider', val: 'water-level-value', fix: 2 }, snowLevel: { el: 'snow-level-slider', val: 'snow-level-value', fix: 2 }, mountainHeight: { el: 'mountain-height-slider', val: 'mountain-height-value', fix: 1 }, terrainDetail: { el: 'terrain-detail-slider', val: 'terrain-detail-value', fix: 0 }, treeCount: { el: 'tree-count-slider', val: 'tree-count-value', fix: 0 }, rockCount: { el: 'rock-count-slider', val: 'rock-count-value', fix: 0 }, oreCount: { el: 'ore-count-slider', val: 'ore-count-value', fix: 0 } };
+            
+            for (const key in sliders) { const config = sliders[key]; const sliderEl = document.getElementById(config.el); const valueEl = document.getElementById(config.val); sliderEl.value = planetParams[key]; valueEl.textContent = config.customDisplay ? config.customDisplay(planetParams[key]) : Number(planetParams[key]).toFixed(config.fix); sliderEl.addEventListener('input', (event) => { const newValue = parseFloat(event.target.value); planetParams[key] = newValue; valueEl.textContent = config.customDisplay ? config.customDisplay(newValue) : newValue.toFixed(config.fix); if (config.callback) config.callback(); }); }
+            const zoomSlider = document.getElementById('zoom-slider'); const zoomValueEl = document.getElementById('zoom-value'); cameraZoomDistance = parseFloat(zoomSlider.value); zoomValueEl.textContent = cameraZoomDistance; zoomSlider.addEventListener('input', () => { cameraZoomDistance = parseFloat(zoomSlider.value); zoomValueEl.textContent = cameraZoomDistance; });
+            const viewBtn = document.getElementById('view-toggle-btn'); const orbitBtn = document.getElementById('orbit-toggle-btn'); const moonBtn = document.getElementById('moon-toggle-btn'); const p2Btn = document.getElementById('planet2-toggle-btn');
+            viewBtn.addEventListener('click', () => { switch (cameraMode) { case 'planet': cameraMode = 'system'; break; case 'system': cameraMode = 'surface'; break; case 'surface': cameraMode = 'planet'; break; } orbitBtn.style.display = cameraMode === 'system' ? 'block' : 'none'; });
+            orbitBtn.addEventListener('click', () => { const isVisible = !orbitLine.visible; orbitLine.visible = isVisible; orbitLine2.visible = isVisible; orbitBtn.textContent = isVisible ? "Hide Orbit" : "Show Orbit"; });
+            moonBtn.addEventListener('click', () => { planetParams.moonVisible = !planetParams.moonVisible; moonBtn.textContent = planetParams.moonVisible ? "Hide Moon" : "Show Moon"; });
+            p2Btn.addEventListener('click', () => { planetParams.planet2Visible = !planetParams.planet2Visible; p2Btn.textContent = planetParams.planet2Visible ? "Hide Planet 2" : "Show Planet 2"; });
+            document.getElementById('planet2-color-picker').addEventListener('input', (e) => { planetParams.planet2Color = e.target.value; planet2.material.color.set(e.target.value); });
+            const colors = { skyColor: 'sky-color', sandColor: 'sand-color', grassColor: 'grass-color', snowColor: 'snow-color', waterColor: 'water-color', trunkColor: 'trunk-color', leavesColor: 'leaves-color', rockColor: 'rock-color', oreColor: 'ore-color' };
+            for (const key in colors) { const colorEl = document.getElementById(colors[key]); colorEl.value = planetParams[key]; colorEl.addEventListener('input', (event) => { const newColor = event.target.value; planetParams[key] = newColor; if (key === 'skyColor') { scene.background.set(newColor); } else if (key === 'waterColor') { if (water) water.material.color.set(newColor); } else if (key === 'snowColor') { if (planet && planet.material.uniforms.snowColor) { planet.material.uniforms.snowColor.value.set(newColor); } if (northIceCap) northIceCap.material.color.set(newColor); if (southIceCap) southIceCap.material.color.set(newColor); } else if (key.endsWith('Color') && planet && planet.material.uniforms[key]) { planet.material.uniforms[key].value.set(newColor); } else { if (!planet) return; planet.children.forEach(child => { if (child.userData.type === 'tree') { if (key === 'trunkColor') child.children[0].material.color.set(newColor); if (key === 'leavesColor') child.children[1].material.color.set(newColor); } else if (child.userData.type === 'rock' && key === 'rockColor') { child.material.color.set(newColor); } else if (child.userData.type === 'ore' && key === 'oreColor') { child.material.color.set(newColor); } }); } });}
+            document.getElementById('next-planet-btn').addEventListener('click', () => { if(isGameMode) toggleGameMode(); generateNewPlanet(); });
+            document.getElementById('game-mode-btn').addEventListener('click', toggleGameMode);
+            const robotLightSlider = document.getElementById('robot-light-slider');
+            const robotLightValue = document.getElementById('robot-light-value');
+            robotLightSlider.addEventListener('input', (e) => { const newValue = parseFloat(e.target.value); if (robotHeadlight) { robotHeadlight.power = newValue; } robotLightValue.textContent = newValue; });
+
+            const towerLightSlider = document.getElementById('tower-light-slider');
+            const towerLightValue = document.getElementById('tower-light-value');
+            towerLightSlider.addEventListener('input', (e) => {
+                const newValue = parseFloat(e.target.value);
+                if (activeTower) {
+                    const light = activeTower.children.find(c => c.isPointLight);
+                    if (light) light.power = newValue;
+                }
+                towerLightValue.textContent = newValue;
+            });
+            buildingColorPicker.addEventListener('input', updateActiveBuildingColor);
+        }
+
+        function toggleGameMode() {
+            isGameMode = !isGameMode;
+            isGameOver = false;
+            
+            const gameBtn = document.getElementById('game-mode-btn');
+            const controls = document.getElementById('controls-container');
+            const viewControls = document.getElementById('view-controls').querySelectorAll('.btn:not(#game-mode-btn)');
+            const zoomContainer = document.getElementById('zoom-container');
+            const infoDiv = document.getElementById('info');
+
+            if (isGameMode) {
+                gameBtn.textContent = "Exit Game";
+                controls.style.display = 'none';
+                gameControls.style.display = 'grid';
+                zoomContainer.style.display = 'none';
+                infoDiv.style.display = 'none';
+                compassContainer.style.display = 'block';
+                viewControls.forEach(btn => btn.style.display = 'none');
+                orbitLine.visible = false; orbitLine2.visible = false;
+                startGame();
+            } else {
+                gameBtn.textContent = "Play";
+                controls.style.display = 'grid';
+                gameControls.style.display = 'none';
+                zoomContainer.style.display = 'flex';
+                infoDiv.style.display = 'block';
+                compassContainer.style.display = 'none';
+                viewControls.forEach(btn => btn.style.display = 'block');
+                gameHud.style.display = 'none';
+                gameOverScreen.style.display = 'none';
+                orbitLine.visible = true; orbitLine2.visible = true;
+                document.getElementById('orbit-toggle-btn').style.display = cameraMode === 'system' ? 'block' : 'none';
+                document.exitPointerLock();
+                endGame();
+            }
+        }
+
+        function startGame() {
+            robotEnergy = 100;
+            oreCollected = 0;
+            playerStocks = 0;
+            stockPrice = 5;
+            stockPriceHistory = [5];
+            harvesters = []; troopers = []; trooperTowers = []; enemies = []; projectiles = []; particles = [];
+            residentHouses = []; tradeCenters = []; residentSkyscrapers = []; watchTowers = [];
+            enemySpawnTimer = planetParams.enemySpawnInterval - 10;
+            isGameOver = false;
+            cancelRemoval();
+
+            gameYear = 1;
+            lastYearAngle = orbitalAngle;
+
+            gameOverScreen.style.display = 'none';
+            gameHud.style.display = 'block';
+            updateHud();
+
+            const spawnPoint = findRobotSpawnPoint();
+            if (spawnPoint) {
+                robot = createRobot();
+                robot.position.copy(spawnPoint.position);
+                robot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), spawnPoint.normal);
+                planet.add(robot);
+            } else {
+                alert("Could not find a valid spawn point for the robot. Try generating a new planet.");
+                toggleGameMode();
+            }
+        }
+
+        function endGame() {
+            if (robot) { planet.remove(robot); robot = null; robotHeadlight = null; }
+            [...harvesters, ...troopers, ...trooperTowers, ...enemies, ...projectiles, ...particles, ...residentHouses, ...tradeCenters, ...residentSkyscrapers, ...watchTowers].forEach(obj => {
+                if(obj.parent) obj.parent.remove(obj);
+            });
+            harvesters = []; troopers = []; trooperTowers = []; enemies = []; projectiles = []; particles = [];
+            residentHouses = []; tradeCenters = []; residentSkyscrapers = []; watchTowers = [];
+            if(isMenuOpen) toggleItemsMenu();
+            if(isTowerMenuOpen) toggleTowerControls();
+            if(isStockMarketOpen) toggleStockMarket();
+            if(isColorPickerOpen) toggleColorPicker();
+            if(isRemovalPromptActive) cancelRemoval();
+        }
+
+        function findRobotSpawnPoint() {
+            const heightAttribute = planet.geometry.attributes.height;
+            const positionAttribute = planet.geometry.attributes.position;
+            const normalAttribute = planet.geometry.attributes.normal;
+            const vertexCount = positionAttribute.count;
+            const waterSphereHeightOffset = 0.1;
+            const clearanceRadius = 5;
+
+            for (let i = 0; i < 500; i++) {
+                const randomIndex = Math.floor(Math.random() * vertexCount);
+                const heightDisplacement = heightAttribute.getX(randomIndex);
+                const finalVertexHeight = planetParams.mountainHeight * heightDisplacement;
+
+                if (finalVertexHeight > waterSphereHeightOffset + 0.2 && heightDisplacement < planetParams.snowLevel - 0.2) {
+                    const pos = new THREE.Vector3().fromBufferAttribute(positionAttribute, randomIndex);
+                    
+                    if (pos.z > 0) continue; 
+
+                    const norm = new THREE.Vector3().fromBufferAttribute(normalAttribute, randomIndex);
+
+                    let isClear = true;
+                    for (const child of planet.children) {
+                        if (child.userData.type === 'tree' || child.userData.type === 'rock') {
+                            if (pos.distanceTo(child.position) < clearanceRadius) {
+                                isClear = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isClear) {
+                        return { position: pos, normal: norm.normalize() };
+                    }
+                }
+            }
+            return null;
+        }
+        
+        function createRobot() {
+            const robotGroup = new THREE.Group();
+            robotGroup.userData.type = 'robot';
+            robotGroup.userData.isAtTowerTop = false;
+            robotGroup.userData.currentWatchTower = null;
+            robotGroup.userData.nearbyWatchTower = null;
+            robotGroup.userData.preTowerPosition = new THREE.Vector3();
+            robotGroup.userData.preTowerQuaternion = new THREE.Quaternion();
+            robotGroup.userData.towerViewYaw = 0;
+            robotGroup.userData.towerViewPitch = 0;
+
+            const bodyMat = new THREE.MeshPhongMaterial({ color: 0xbbbbbb });
+            const trackMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 3), bodyMat);
+            body.position.y = 1; robotGroup.add(body);
+            const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 3.5), trackMat);
+            trackL.position.set(-1, 0.4, 0); robotGroup.add(trackL);
+            const trackR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 3.5), trackMat);
+            trackR.position.set(1, 0.4, 0); robotGroup.add(trackR);
+            const headlightPower = parseFloat(document.getElementById('robot-light-slider').value);
+            robotHeadlight = new THREE.SpotLight(0xffffff, headlightPower, 100, Math.PI / 8, 0.5, 2);
+            robotHeadlight.position.set(0, 1, -1.5); robotHeadlight.target.position.set(0, 1, -10);
+            robotGroup.add(robotHeadlight); robotGroup.add(robotHeadlight.target);
+            robotGroup.scale.set(0.3, 0.3, 0.3);
+            return robotGroup;
+        }
+        
+        function updateRobot(deltaTime) {
+            if (!robot) return;
+
+            if (robot.userData.isAtTowerTop) {
+                const turnSpeed = 1.0;
+                if (keys['a'] || keys['d'] || keys['w'] || keys['s']) {
+                     if (keys['a']) robot.userData.towerViewYaw += turnSpeed * deltaTime;
+                     if (keys['d']) robot.userData.towerViewYaw -= turnSpeed * deltaTime;
+                     if (keys['w']) robot.userData.towerViewPitch += turnSpeed * deltaTime;
+                     if (keys['s']) robot.userData.towerViewPitch -= turnSpeed * deltaTime;
+                     robot.userData.towerViewPitch = THREE.MathUtils.clamp(robot.userData.towerViewPitch, -Math.PI / 2.1, Math.PI / 2.1);
+                }
+                return; // Skip all movement logic
+            }
+            
+            if (isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive) return;
+
+            const lastPosition = robot.position.clone();
+            const lastQuaternion = robot.quaternion.clone();
+            let moved = false;
+            
+            if (keys['a']) { robot.rotateY(robotTurnSpeed * deltaTime); moved = true; }
+            if (keys['d']) { robot.rotateY(-robotTurnSpeed * deltaTime); moved = true; }
+
+            let moveDistance = 0;
+            if (keys['w']) { moveDistance = robotSpeed * deltaTime; moved = true; }
+            if (keys['s']) { moveDistance = -robotSpeed * deltaTime; moved = true; }
+
+            if (moved) {
+                robotEnergy = Math.max(0, robotEnergy - planetParams.robotEnergyConsumption * deltaTime);
+            }
+            if (moveDistance !== 0) {
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(robot.quaternion);
+                robot.position.add(forward.multiplyScalar(moveDistance));
+            }
+
+            snapObjectToSurface(robot);
+            const finalRobotWorldPos = new THREE.Vector3().setFromMatrixPosition(robot.matrixWorld);
+            const robotRadius = 1.5;
+            for (const child of planet.children) {
+                const type = child.userData.type;
+                if (type === 'tree' || type === 'rock' || type === 'wall' || type === 'harvester' || type === 'trooper' || type === 'enemy' || type === 'pyramid' || type === 'tower' || type === 'trooper_tower' || type === 'resident_house' || type === 'trade_center' || type === 'resident_skyscraper' || type === 'watch_tower') {
+                    if (child === robot) continue;
+                    const childWorldPos = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+                    const collisionDist = type === 'watch_tower' ? 4.0 : robotRadius;
+                    if (finalRobotWorldPos.distanceTo(childWorldPos) < collisionDist) {
+                        robot.position.copy(lastPosition);
+                        robot.quaternion.copy(lastQuaternion);
+                        break; 
+                    }
+                }
+            }
+            robot.updateWorldMatrix(true, false);
+            const oreCollectionRadius = 1.5;
+            for (let i = planet.children.length - 1; i >= 0; i--) {
+                const child = planet.children[i];
+                if (child.userData.type === 'ore') {
+                    const oreWorldPos = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+                    if (finalRobotWorldPos.distanceTo(oreWorldPos) < oreCollectionRadius) {
+                        planet.remove(child);
+                        oreCollected++;
+                        updateHud();
+                    }
+                }
+            }
+
+            let isRecharging = false;
+            const rechargeRadius = 15;
+            const rechargeRate = 10;
+            for (const child of planet.children) {
+                if (child.userData.type === 'pyramid') {
+                    const pyramidWorldPos = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+                    if (finalRobotWorldPos.distanceTo(pyramidWorldPos) < rechargeRadius) {
+                        robotEnergy = Math.min(100, robotEnergy + rechargeRate * deltaTime);
+                        isRecharging = true;
+                        break;
+                    }
+                }
+            }
+
+            if (moved || isRecharging) updateHud();
+            
+            if (robotEnergy <= 0 && !isGameOver) {
+                if (isMenuOpen) toggleItemsMenu();
+                if (isTowerMenuOpen) toggleTowerControls();
+                if (isStockMarketOpen) toggleStockMarket();
+                if (isColorPickerOpen) toggleColorPicker();
+                if (isRemovalPromptActive) cancelRemoval();
+                isGameOver = true;
+                gameOverScreen.style.display = 'flex';
+                gameHud.style.display = 'none';
+            }
+        }
+
+        function updateHud() {
+            hudEnergy.textContent = `Energy: ${Math.round(robotEnergy)}%`;
+            hudOre.textContent = `Ore Collected: ${Math.round(oreCollected)}`;
+            hudYear.textContent = `Year: ${gameYear}`;
+            hudStocks.textContent = `Stocks: ${playerStocks}`;
+            if (robotEnergy <= 0) hudEnergy.textContent = `Energy: 0%`;
+        }
+
+        function setupMouseControls() { renderer.domElement.addEventListener('mousedown',(t)=>{if(isGameMode || cameraMode !== 'planet') return; isDragging=!0,document.body.classList.add("dragging"),previousMousePosition.x=t.clientX,previousMousePosition.y=t.clientY}),renderer.domElement.addEventListener('mousemove',t=>{if(!isDragging || isGameMode || cameraMode !== 'planet')return; const e=t.clientX-previousMousePosition.x,o=t.clientY-previousMousePosition.y,a=(new THREE.Vector3(0,1,0)).applyQuaternion(camera.quaternion),n=(new THREE.Vector3(1,0,0)).applyQuaternion(camera.quaternion),r=new THREE.Vector3;r.add(a.multiplyScalar(e*mouseSensitivity)),r.add(n.multiplyScalar(o*mouseSensitivity)),planetAngularVelocity.add(r),previousMousePosition.x=t.clientX,previousMousePosition.y=t.clientY}),renderer.domElement.addEventListener('mouseup',()=>{isDragging=!1,document.body.classList.remove("dragging")}),renderer.domElement.addEventListener('mouseleave',()=>{isDragging=!1,document.body.classList.remove("dragging")}); }
+        
+        function regenerateStars() {
+            if (stars) {
+                scene.remove(stars);
+                stars.geometry.dispose();
+                stars.material.dispose();
+            }
+            createStars();
+        }
+
+        function createStars() {
+            const starVertices = [];
+            const starRadius = 6000;
+            for (let i = 0; i < planetParams.starCount; i++) {
+                const vec = new THREE.Vector3();
+                vec.setFromSphericalCoords(
+                    starRadius * (0.8 + Math.random() * 0.4),
+                    Math.acos(2 * Math.random() - 1),
+                    2 * Math.PI * Math.random()
+                );
+                starVertices.push(vec.x, vec.y, vec.z);
+            }
+            const starGeometry = new THREE.BufferGeometry();
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            const starMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 1.5,
+                sizeAttenuation: false
+            });
+            stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+        }
+
+        function createTree(){const t=new THREE.Group;t.userData.type="tree";const e=3,o=4,a=new THREE.MeshLambertMaterial({color:planetParams.trunkColor}),n=new THREE.MeshLambertMaterial({color:planetParams.leavesColor}),r=new THREE.CylinderGeometry(.3,.3,e,8),l=new THREE.Mesh(r,a);l.position.y=e/2,t.add(l);const s=new THREE.ConeGeometry(1.5,o,8),c=new THREE.Mesh(s,n);return c.position.y=e+o/2,t.add(c),t.scale.set(.3,.3,.3),t}
+        function createRock(){const t=new THREE.IcosahedronGeometry(Math.random()*.4+.2,1),e=t.attributes.position;for(let o=0;o<e.count;o++){const a=new THREE.Vector3().fromBufferAttribute(e,o);a.multiplyScalar(1+(.5-Math.random())*.4),e.setXYZ(o,a.x,a.y,a.z)}t.computeVertexNormals();const o=new THREE.MeshLambertMaterial({color:planetParams.rockColor}),a=new THREE.Mesh(t,o);return a.userData.type="rock",a}
+        function createOre(){const t=new THREE.DodecahedronGeometry(Math.random()*.2+.1,0),e=new THREE.MeshStandardMaterial({color:planetParams.oreColor,metalness:.8,roughness:.3}),o=new THREE.Mesh(t,e);return o.userData.type="ore",o}
+        
+        function generateNewPlanet() { 
+            if (loadingOverlay) loadingOverlay.style.display = 'flex'; 
+            setTimeout(() => { 
+                if (planet) { orbitalPivot.remove(planet); planet.geometry.dispose(); planet.material.dispose(); } 
+                if (water) { orbitalPivot.remove(water); water.geometry.dispose(); water.material.dispose(); } 
+                if (northIceCap) { orbitalPivot.remove(northIceCap); northIceCap.geometry.dispose(); northIceCap.material.dispose(); northIceCap = null; }
+                if (southIceCap) { orbitalPivot.remove(southIceCap); southIceCap.geometry.dispose(); southIceCap.material.dispose(); southIceCap = null; }
+                simplex = createSimplexNoise(); 
+                createPlanet(); 
+                planetAngularVelocity.set(0, 0, 0); 
+                if (loadingOverlay) loadingOverlay.style.display = 'none'; 
+            }, 10); 
+        }
+
+        function createPlanet() {
+            const geometry = new THREE.SphereGeometry(planetParams.radius, 256, 256); const position = geometry.attributes.position; const heights = []; const tempVec = new THREE.Vector3();
+            for (let i = 0; i < position.count; i++) { tempVec.fromBufferAttribute(position, i); let displacement = 0, frequency = 1.0 / planetParams.terrainDetail, amplitude = 1.0; for (let j = 0; j < 4; j++) { displacement += simplex.noise(tempVec.x*frequency, tempVec.y*frequency, tempVec.z*frequency) * amplitude; frequency *= 2.0; amplitude *= 0.5; } const finalHeight = planetParams.mountainHeight * displacement; heights.push(finalHeight); tempVec.setLength(planetParams.radius + finalHeight); position.setXYZ(i, tempVec.x, tempVec.y, tempVec.z); }
+            geometry.setAttribute('height', new THREE.Float32BufferAttribute(heights, 1)); geometry.computeVertexNormals();
+            
+            const MAX_TOWER_LIGHTS = 10;
+            const towerLightPositions = [];
+            const towerLightPowers = [];
+            for (let i = 0; i < MAX_TOWER_LIGHTS; i++) {
+                towerLightPositions.push(new THREE.Vector3());
+                towerLightPowers.push(0.0);
+            }
+
+            const material = new THREE.ShaderMaterial({ 
+                uniforms: { 
+                    sandColor: { value: new THREE.Color(planetParams.sandColor) }, 
+                    grassColor: { value: new THREE.Color(planetParams.grassColor) }, 
+                    snowColor: { value: new THREE.Color(planetParams.snowColor) }, 
+                    waterLevel: { value: planetParams.waterLevel }, 
+                    snowLevel: { value: planetParams.snowLevel }, 
+                    lightPosition: { value: pointLight.position },
+                    moonLightPosition: { value: moonLight.position },
+                    moonReflection: { value: planetParams.moonReflection },
+                    starlightIntensity: { value: planetParams.starlightIntensity },
+                    towerLightsPos: { value: towerLightPositions },
+                    towerLightsPower: { value: towerLightPowers },
+                    towerLightCount: { value: 0 },
+                    towerLightColor: { value: new THREE.Color(0xffffee) }
+                }, 
+                vertexShader: `
+                    attribute float height; 
+                    varying float vHeight; 
+                    varying vec3 vNormal; 
+                    varying vec3 vWorldPosition; 
+                    void main() { 
+                        vHeight = height; 
+                        vNormal = normalize(normalMatrix * normal); 
+                        vec4 worldPosition = modelMatrix * vec4(position, 1.0); 
+                        vWorldPosition = worldPosition.xyz; 
+                        gl_Position = projectionMatrix * viewMatrix * worldPosition; 
+                    }`, 
+                fragmentShader: `
+                    #define MAX_TOWER_LIGHTS 10
+                    uniform vec3 sandColor; 
+                    uniform vec3 grassColor; 
+                    uniform vec3 snowColor; 
+                    uniform float waterLevel; 
+                    uniform float snowLevel; 
+                    uniform vec3 lightPosition; 
+                    uniform vec3 moonLightPosition;
+                    uniform float moonReflection;
+                    uniform float starlightIntensity;
+                    uniform vec3 towerLightsPos[MAX_TOWER_LIGHTS];
+                    uniform float towerLightsPower[MAX_TOWER_LIGHTS];
+                    uniform int towerLightCount;
+                    uniform vec3 towerLightColor;
+                    varying float vHeight; 
+                    varying vec3 vNormal; 
+                    varying vec3 vWorldPosition; 
+                    void main() { 
+                        vec3 surfaceColor; 
+                        float grassMix = smoothstep(waterLevel - 0.5, waterLevel + 0.5, vHeight); 
+                        surfaceColor = mix(sandColor, grassColor, grassMix); 
+                        float snowMix = smoothstep(snowLevel - 0.5, snowLevel + 0.5, vHeight); 
+                        surfaceColor = mix(surfaceColor, snowColor, snowMix); 
+
+                        vec3 totalLight = vec3(starlightIntensity);
+
+                        vec3 sunDirection = normalize(lightPosition - vWorldPosition);
+                        float sunDiffuse = max(0.0, dot(vNormal, sunDirection));
+                        totalLight += vec3(1.0, 1.0, 1.0) * sunDiffuse;
+
+                        vec3 moonLightDirection = normalize(moonLightPosition - vWorldPosition);
+                        float moonDiffuse = max(0.0, dot(vNormal, moonLightDirection));
+                        vec3 moonLightColor = vec3(0.5, 0.5, 0.9);
+                        totalLight += moonLightColor * moonDiffuse * moonReflection;
+
+                        for (int i = 0; i < MAX_TOWER_LIGHTS; i++) {
+                            if (i >= towerLightCount) break;
+
+                            vec3 lightVec = towerLightsPos[i] - vWorldPosition;
+                            float distance = length(lightVec);
+                            vec3 lightDir = normalize(lightVec);
+                            
+                            float attenuation = 1.0 / (distance * distance + 1.0);
+                            float intensity = towerLightsPower[i] / 1000.0;
+                            float diffuse = max(0.0, dot(vNormal, lightDir));
+                            
+                            totalLight += towerLightColor * diffuse * attenuation * intensity;
+                        }
+
+                        vec3 outgoingLight = surfaceColor * totalLight;
+                        gl_FragColor = vec4(outgoingLight, 1.0); 
+                    }` 
+            });
+
+            planet = new THREE.Mesh(geometry, material);
+            const heightAttribute = geometry.attributes.height, positionAttribute = geometry.attributes.position, normalAttribute = geometry.attributes.normal, vertexCount = heightAttribute.count, waterSphereHeightOffset = 0.1;
+            const placeObject = (createFn, count, placementRule) => { let placedCount = 0, attempts = 0; while (placedCount < count && attempts < count * 5) { const randomIndex = Math.floor(Math.random() * vertexCount); const heightDisplacement = heightAttribute.getX(randomIndex); const finalVertexHeight = planetParams.mountainHeight * heightDisplacement; const pos = new THREE.Vector3().fromBufferAttribute(positionAttribute, randomIndex); const norm = new THREE.Vector3().fromBufferAttribute(normalAttribute, randomIndex); if (placementRule(finalVertexHeight, heightDisplacement, pos, norm)) { const obj = createFn(); obj.position.copy(pos); obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), norm.normalize()); planet.add(obj); placedCount++; } attempts++; } };
+            placeObject(createTree, planetParams.treeCount, (fvh, hd) => fvh > waterSphereHeightOffset + 0.2 && hd < planetParams.snowLevel - 0.2); placeObject(createRock, planetParams.rockCount, (fvh, hd) => fvh > waterSphereHeightOffset + 0.1 && hd < planetParams.snowLevel - 0.5); placeObject(createOre, planetParams.oreCount, () => true);
+            const waterRadius = planetParams.radius + 0.1; const waterGeometry = new THREE.SphereGeometry(waterRadius, 128, 128); const waterMaterial = new THREE.MeshPhongMaterial({ color: new THREE.Color(planetParams.waterColor), shininess: 80, transparent: true, opacity: 0.8 });
+            water = new THREE.Mesh(waterGeometry, waterMaterial);
+
+            const iceCapRadius = planetParams.radius + 0.15;
+            const iceCapMaterial = new THREE.MeshPhongMaterial({ color: new THREE.Color(planetParams.snowColor), shininess: 20 });
+            const capAngle = Math.PI / 9; // ~20 degrees
+            const northGeom = new THREE.SphereGeometry(iceCapRadius, 64, 32, 0, Math.PI * 2, 0, capAngle);
+            northIceCap = new THREE.Mesh(northGeom, iceCapMaterial);
+            const southGeom = new THREE.SphereGeometry(iceCapRadius, 64, 32, 0, Math.PI * 2, Math.PI - capAngle, capAngle);
+            southIceCap = new THREE.Mesh(southGeom, iceCapMaterial);
+            
+            orbitalPivot.add(planet, water, northIceCap, southIceCap); 
+            planet.add(moonPivot);
+        }
+
+        function updateOrbitDistanceRange() {
+            const points = orbitLine.geometry.attributes.position.array;
+            if (!points || points.length === 0) {
+                minOrbitDist = maxOrbitDist = planetParams.sunDistance;
+                return;
+            };
+            
+            let minSq = Infinity;
+            let maxSq = -Infinity;
+            
+            for (let i = 0; i < points.length; i += 3) {
+                const x = points[i];
+                const y = points[i+1];
+                const distSq = x*x + y*y;
+                if (distSq < minSq) minSq = distSq;
+                if (distSq > maxSq) maxSq = distSq;
+            }
+            minOrbitDist = Math.sqrt(minSq);
+            maxOrbitDist = Math.sqrt(maxSq);
+        }
+        
+        function updateOrbitLine() { 
+            const a = planetParams.sunDistance; 
+            const b = a * planetParams.ellipseRatio; 
+            const c = Math.sqrt(Math.max(0, a*a - b*b)); 
+            const focusX = -c * planetParams.focusOffset; 
+            const curve = new THREE.EllipseCurve(focusX, 0, a, b, 0, 2 * Math.PI, false, 0); 
+            orbitLine.geometry.setFromPoints(curve.getPoints(128)); 
+            updateOrbitDistanceRange();
+        }
+        function updateOrbitLine2() { const a = planetParams.orbitalDistance2; const b = a * 0.9; const c = Math.sqrt(Math.max(0, a*a - b*b)); const focusX = -c * planetParams.focusOffset; const curve = new THREE.EllipseCurve(focusX, 0, a, b, 0, 2 * Math.PI, false, 0); orbitLine2.geometry.setFromPoints(curve.getPoints(128)); }
+
+        function handleArrowKeyControls(deltaTime) {
+            if (isGameMode) return;
+            if (cameraMode === 'system') {
+                if (keys['arrowup'] || keys['w']) { systemCameraAngleY += systemCameraAngleSpeed * deltaTime; }
+                if (keys['arrowdown'] || keys['s']) { systemCameraAngleY -= systemCameraAngleSpeed * deltaTime; }
+                systemCameraAngleY = THREE.MathUtils.clamp(systemCameraAngleY, 0.05, Math.PI / 2);
+            } else {
+                const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                const torque = new THREE.Vector3();
+                if (keys['arrowup'] || keys['w']) torque.add(cameraRight);
+                if (keys['arrowdown'] || keys['s']) torque.sub(cameraRight);
+                if (keys['arrowleft'] || keys['a']) torque.add(cameraUp);
+                if (keys['arrowright'] || keys['d']) torque.sub(cameraUp);
+                planetAngularVelocity.add(torque.multiplyScalar(rotationAcceleration * deltaTime));
+            }
+        }
+        
+        function updateGameCamera() {
+            if (!robot) return;
+            planet.updateWorldMatrix(true, false);
+            robot.updateWorldMatrix(true, false);
+
+            if (robot.userData.isAtTowerTop) {
+                const robotWorldPos = new THREE.Vector3().setFromMatrixPosition(robot.matrixWorld);
+                const planetCenterWorld = new THREE.Vector3().setFromMatrixPosition(planet.matrixWorld);
+                const worldUp = robotWorldPos.clone().sub(planetCenterWorld).normalize();
+
+                const cameraPos = robotWorldPos.clone().add(worldUp.clone().multiplyScalar(1.2)); // Eye level
+                camera.position.copy(cameraPos);
+
+                const towerQuaternion = robot.userData.currentWatchTower.quaternion;
+                const baseLookDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(towerQuaternion);
+
+                const yawQuat = new THREE.Quaternion().setFromAxisAngle(worldUp, robot.userData.towerViewYaw);
+                const yawedLookDirection = baseLookDirection.clone().applyQuaternion(yawQuat);
+
+                const rightVector = new THREE.Vector3().crossVectors(worldUp, yawedLookDirection).normalize();
+                const pitchQuat = new THREE.Quaternion().setFromAxisAngle(rightVector, robot.userData.towerViewPitch);
+                const finalLookDirection = yawedLookDirection.applyQuaternion(pitchQuat);
+                
+                const lookAtPos = camera.position.clone().add(finalLookDirection);
+                
+                camera.up.copy(worldUp);
+                camera.lookAt(lookAtPos);
+            } else {
+                const robotWorldPos = new THREE.Vector3().setFromMatrixPosition(robot.matrixWorld);
+                const planetCenterWorld = new THREE.Vector3().setFromMatrixPosition(planet.matrixWorld);
+                const worldUp = robotWorldPos.clone().sub(planetCenterWorld).normalize();
+
+                if (robotCameraMode === 'satellite') {
+                    const offset = new THREE.Vector3(0, 10, 15);
+                    camera.position.copy(offset.applyMatrix4(robot.matrixWorld));
+                    camera.up.copy(worldUp);
+                    camera.lookAt(robotWorldPos);
+                } else { // commander
+                    const offset = new THREE.Vector3(0, 1.2, 0.5);
+                    camera.position.copy(offset.applyMatrix4(robot.matrixWorld));
+                    const lookAtOffset = new THREE.Vector3(0, 1.2, -10);
+                    const lookAtPos = lookAtOffset.applyMatrix4(robot.matrixWorld);
+                    camera.up.copy(worldUp);
+                    camera.lookAt(lookAtPos);
+                }
+            }
+        }
+
+        function updateCamera() {
+            if (isGameMode) { updateGameCamera(); camera.updateProjectionMatrix(); return; }
+            const originalFov = 75;
+            if (cameraMode === 'planet' && planet) {
+                camera.fov = originalFov;
+                const planetWorldPos = new THREE.Vector3(); orbitalPivot.getWorldPosition(planetWorldPos);
+                camera.position.set(planetWorldPos.x, planetWorldPos.y, planetWorldPos.z - cameraZoomDistance);
+                camera.lookAt(planetWorldPos);
+            } else if (cameraMode === 'system') {
+                camera.fov = originalFov;
+                const distance = 400 + cameraZoomDistance * 4;
+                camera.position.set(0, Math.sin(systemCameraAngleY) * distance, Math.cos(systemCameraAngleY) * distance);
+                camera.lookAt(scene.position);
+            } else if (cameraMode === 'surface' && planet) {
+                camera.fov = originalFov - ( (cameraZoomDistance - 30) / (1500 - 30) * 60 );
+                const localPos = new THREE.Vector3(planetParams.radius + 5, 0, 0);
+                const localTarget = new THREE.Vector3(planetParams.radius, 0, -100);
+                planet.updateWorldMatrix(true, false);
+                camera.position.copy(localPos).applyMatrix4(planet.matrixWorld);
+                const planetCenterWorld = new THREE.Vector3();
+                planet.getWorldPosition(planetCenterWorld);
+                const worldUp = camera.position.clone().sub(planetCenterWorld).normalize();
+                camera.up.copy(worldUp);
+                const targetWorld = localTarget.applyMatrix4(planet.matrixWorld);
+                camera.lookAt(targetWorld);
+            }
+            camera.updateProjectionMatrix();
+        }
+
+        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); menuCamera.aspect = window.innerWidth / window.innerHeight; menuCamera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+
+        function updateCompass() {
+            if (!robot) return;
+            const north = new THREE.Vector3(0, 0, 1);
+            const up = robot.position.clone().normalize();
+            const projectedNorth = north.clone().projectOnPlane(up).normalize();
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(robot.quaternion);
+            let angle = projectedNorth.angleTo(forward);
+            const cross = new THREE.Vector3().crossVectors(projectedNorth, forward);
+            if (up.dot(cross) < 0) {
+                angle = -angle;
+            }
+            compassArrow.style.transform = `rotate(${angle}rad)`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+            
+            orbitalAngle += planetParams.orbitalSpeed * deltaTime;
+            orbitalAngle2 += planetParams.orbitalSpeed2 * deltaTime;
+            
+            // Update orbital positions
+            const a1 = planetParams.sunDistance; const b1 = a1 * planetParams.ellipseRatio; const c1 = Math.sqrt(Math.max(0, a1*a1 - b1*b1));
+            orbitalPivot.position.x = Math.cos(orbitalAngle) * a1 - (c1 * planetParams.focusOffset);
+            orbitalPivot.position.z = Math.sin(orbitalAngle) * b1;
+
+            if (planet && planet.material.uniforms.snowLevel) {
+                const distanceToSun = orbitalPivot.position.length();
+                const baseSnowLevel = planetParams.snowLevel;
+                const snowVariation = 0.5;
+
+                if (maxOrbitDist > minOrbitDist) {
+                    const normalizedDistance = THREE.MathUtils.clamp((distanceToSun - minOrbitDist) / (maxOrbitDist - minOrbitDist), 0, 1);
+                    const highSnowThreshold = baseSnowLevel + snowVariation; // For close distance (less snow)
+                    const lowSnowThreshold  = baseSnowLevel - snowVariation; // For far distance (more snow)
+                    const dynamicSnowLevel = THREE.MathUtils.lerp(highSnowThreshold, lowSnowThreshold, normalizedDistance);
+                    planet.material.uniforms.snowLevel.value = dynamicSnowLevel;
+                } else {
+                     planet.material.uniforms.snowLevel.value = baseSnowLevel;
+                }
+            }
+
+            if (isGameMode && !isGameOver) {
+                if(planet) planet.updateWorldMatrix(true, true);
+                
+                if (planet && planet.material.uniforms.towerLightCount) {
+                    const towerLights = planet.children.filter(c => c.userData.type === 'tower');
+                    const maxLights = 10; 
+                    const uniforms = planet.material.uniforms;
+
+                    let lightCount = 0;
+                    for (let i = 0; i < towerLights.length; i++) {
+                        if (lightCount >= maxLights) break;
+                        const tower = towerLights[i];
+                        const light = tower.children.find(c => c.isPointLight);
+                        if (light) {
+                            light.getWorldPosition(uniforms.towerLightsPos.value[lightCount]);
+                            uniforms.towerLightsPower.value[lightCount] = light.power;
+                            lightCount++;
+                        }
+                    }
+                    uniforms.towerLightCount.value = lightCount;
+                }
+
+                if (orbitalAngle >= lastYearAngle + (2 * Math.PI)) {
+                    gameYear++;
+                    lastYearAngle += (2 * Math.PI);
+
+                    oreCollected += residentHouses.length;
+                    oreCollected += residentSkyscrapers.length * 5;
+
+                    stockPrice += (Math.random() - 0.47) * 4;
+                    stockPrice = Math.max(1, stockPrice);
+                    stockPrice = Math.round(stockPrice);
+                    stockPriceHistory.push(stockPrice);
+                    if (stockPriceHistory.length > 50) stockPriceHistory.shift();
+
+                    if (isStockMarketOpen) {
+                        drawStockChart();
+                        updateStockMarketInfo();
+                    }
+                    updateHud();
+                }
+
+                updateRobot(deltaTime);
+                updateInteractionPrompts();
+                harvesters.forEach(h => updateHarvester(h, deltaTime));
+                troopers.forEach(t => updateTrooper(t, deltaTime));
+                trooperTowers.forEach(t => updateTrooperTower(t, deltaTime));
+                enemies.forEach(e => updateEnemy(e, deltaTime));
+                updateProjectiles(deltaTime);
+                updateParticles(deltaTime);
+                updateEnemySpawner(deltaTime);
+                updateCompass();
+            } else if (isGameMode && isGameOver) {
+                // Game is paused
+            } else {
+                handleArrowKeyControls(deltaTime);
+                planetAngularVelocity.multiplyScalar(Math.max(0, 1.0 - rotationDamping * deltaTime));
+            }
+            
+            if ((isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen) && menuDisplayObject) {
+                menuDisplayObject.rotation.y += deltaTime;
+            }
+
+            pointLight.power = planetParams.lightIntensity;
+            sun.scale.setScalar(planetParams.sunSize);
+
+            orbitalPivot2.visible = planetParams.planet2Visible;
+            orbitLine2.visible = orbitLine.visible && planetParams.planet2Visible && !isGameMode;
+            if (planetParams.planet2Visible) {
+                const a2 = planetParams.orbitalDistance2; const b2 = a2 * 0.9; const c2 = Math.sqrt(Math.max(0, a2*a2 - b2*b2));
+                orbitalPivot2.position.x = Math.cos(orbitalAngle2) * a2 - (c2 * planetParams.focusOffset);
+                orbitalPivot2.position.z = Math.sin(orbitalAngle2) * b2;
+                planet2.rotation.y += planetParams.planet2RotationSpeed * deltaTime;
+                planet2.scale.setScalar(planetParams.planet2Size);
+            }
+            moonPivot.visible = planetParams.moonVisible;
+            if(planetParams.moonVisible) {
+                moonPivot.rotation.y += planetParams.moonRotationSpeed * deltaTime;
+                const moonScale = planetParams.moonSize / 100 * planetParams.radius;
+                moon.scale.setScalar(moonScale);
+                moon.position.x = planetParams.moonDistance;
+                if (planet && planet.material.uniforms.moonReflection) {
+                    planet.material.uniforms.moonReflection.value = planetParams.moonReflection;
+                }
+            }
+            if (planet) {
+                if (planetParams.rotationSpeed > 0 && !isGameMode) { const autoQuat = new THREE.Quaternion().setFromAxisAngle(autoRotationAxis, planetParams.rotationSpeed * deltaTime); planet.quaternion.premultiply(autoQuat); water.quaternion.premultiply(autoQuat); }
+                const manualAngle = planetAngularVelocity.length() * deltaTime;
+                if (manualAngle > 0 && !isGameMode) { const manualQuat = new THREE.Quaternion().setFromAxisAngle(planetAngularVelocity.clone().normalize(), manualAngle); planet.quaternion.premultiply(manualQuat); water.quaternion.premultiply(manualQuat); }
+            }
+            
+            updateCamera();
+
+            renderer.autoClear = false;
+            renderer.clear();
+            renderer.render(scene, camera);
+
+            if (isGameMode && (isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen)) {
+                renderer.clearDepth();
+                renderer.render(menuScene, menuCamera);
+            }
+            renderer.autoClear = true;
+        }
+
+        // --- Build Menu Logic ---
+        function createItemsMenuHTML() {
+            itemsGrid.innerHTML = '';
+            buildableItems.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'item-card';
+                card.dataset.index = index;
+                card.innerHTML = `<h3>${item.name}</h3><p>${item.cost} Ore</p>`;
+                card.addEventListener('click', () => {
+                    if (isMenuOpen) {
+                        selectedItemIndex = index;
+                        updateMenuSelection();
+                    }
+                });
+                itemsGrid.appendChild(card);
+            });
+        }
+        
+        function toggleItemsMenu() {
+            if (isGameOver || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive) return;
+
+            isMenuOpen = !isMenuOpen;
+            itemsMenuPanel.style.display = isMenuOpen ? 'block' : 'none';
+
+            if (isMenuOpen) {
+                document.exitPointerLock();
+                selectedItemIndex = 0;
+                updateMenuSelection();
+            } else {
+                if (menuDisplayObject) menuScene.remove(menuDisplayObject);
+            }
+        }
+
+        function updateMenuSelection() {
+            if (menuDisplayObject) menuScene.remove(menuDisplayObject);
+            const item = buildableItems[selectedItemIndex];
+            menuDisplayObject = item.createMenuModel();
+            menuScene.add(menuDisplayObject);
+            
+            const cards = document.querySelectorAll('.item-card');
+            cards.forEach((card, index) => {
+                card.classList.toggle('selected', index === selectedItemIndex);
+            });
+        }
+
+        function placeSelectedItem() {
+            if (!robot) return;
+            const item = buildableItems[selectedItemIndex];
+            if (oreCollected < item.cost) {
+                alert("Not enough ore!");
+                return;
+            }
+            
+            oreCollected -= item.cost;
+            updateHud();
+
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(robot.getWorldQuaternion(new THREE.Quaternion()));
+            const robotWorldPos = new THREE.Vector3().setFromMatrixPosition(robot.matrixWorld);
+            const targetPointWorld = robotWorldPos.add(forward.multiplyScalar(8));
+            
+            const newObject = item.createGameObject();
+            newObject.quaternion.copy(robot.quaternion);
+            newObject.position.copy(planet.worldToLocal(targetPointWorld));
+            planet.add(newObject);
+            
+            snapObjectToSurface(newObject);
+            
+            const clearingRadius = (newObject.userData.type === 'resident_house' || newObject.userData.type === 'trade_center' || newObject.userData.type === 'resident_skyscraper' || newObject.userData.type === 'watch_tower') ? 8 : 5;
+            if (newObject.userData.type === 'pyramid' || newObject.userData.type === 'tower' || newObject.userData.type === 'trooper_tower' || newObject.userData.type === 'resident_house' || newObject.userData.type === 'trade_center' || newObject.userData.type === 'resident_skyscraper' || newObject.userData.type === 'watch_tower') {
+                const newObjectWorldPos = new THREE.Vector3().setFromMatrixPosition(newObject.matrixWorld);
+
+                for (let i = planet.children.length - 1; i >= 0; i--) {
+                    const child = planet.children[i];
+                    const childType = child.userData.type;
+                    if (childType === 'tree' || childType === 'rock' || childType === 'ore') {
+                        const childWorldPos = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+                        if (newObjectWorldPos.distanceTo(childWorldPos) < clearingRadius) {
+                            planet.remove(child);
+                        }
+                    }
+                }
+            }
+
+            if (newObject.userData.type === 'harvester') harvesters.push(newObject);
+            if (newObject.userData.type === 'trooper') troopers.push(newObject);
+            if (newObject.userData.type === 'trooper_tower') trooperTowers.push(newObject);
+            if (newObject.userData.type === 'resident_house') residentHouses.push(newObject);
+            if (newObject.userData.type === 'trade_center') tradeCenters.push(newObject);
+            if (newObject.userData.type === 'resident_skyscraper') residentSkyscrapers.push(newObject);
+            if (newObject.userData.type === 'watch_tower') watchTowers.push(newObject);
+            
+            toggleItemsMenu();
+        }
+
+        function updateInteractionPrompts() {
+            if (isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive || !robot) {
+                interactionPrompt.style.display = 'none';
+                return;
+            }
+
+            const robotPos = robot.position.clone();
+            
+            nearbyTradeCenter = null;
+            nearbyTower = null;
+            nearbyBuilding = null;
+            robot.userData.nearbyWatchTower = null;
+            
+            if (robot.userData.isAtTowerTop) {
+                 interactionPrompt.textContent = "Push 'e' to go down.";
+                 interactionPrompt.style.display = 'block';
+                 return;
+            }
+
+            for (const center of tradeCenters) {
+                if (robotPos.distanceTo(center.position) < 15) {
+                    nearbyTradeCenter = center;
+                    break;
+                }
+            }
+            if (nearbyTradeCenter) {
+                interactionPrompt.textContent = "[E] Open Stock Market";
+                interactionPrompt.style.display = 'block';
+                return;
+            }
+
+            const towers = planet.children.filter(c => c.userData.type === 'tower');
+            for (const tower of towers) {
+                if (robotPos.distanceTo(tower.position) < 10) {
+                    nearbyTower = tower;
+                    break;
+                }
+            }
+            if (nearbyTower) {
+                interactionPrompt.textContent = "[E] Adjust Light";
+                interactionPrompt.style.display = 'block';
+                return;
+            }
+
+            const allBuildings = [...residentHouses, ...residentSkyscrapers];
+            for (const building of allBuildings) {
+                 if (robotPos.distanceTo(building.position) < 10) {
+                    nearbyBuilding = building;
+                    break;
+                }
+            }
+             if (nearbyBuilding) {
+                interactionPrompt.textContent = "[E] Change Color";
+                interactionPrompt.style.display = 'block';
+                return;
+            }
+            
+            for (const tower of watchTowers) {
+                if (robotPos.distanceTo(tower.position) < 8) {
+                    robot.userData.nearbyWatchTower = tower;
+                    break;
+                }
+            }
+            if (robot.userData.nearbyWatchTower) {
+                interactionPrompt.textContent = "[E] Go Up";
+                interactionPrompt.style.display = 'block';
+                return;
+            }
+
+            interactionPrompt.style.display = 'none';
+        }
+
+        function toggleWatchTowerElevator(tower) {
+            if (!robot || !tower || isRemovalPromptActive) return;
+
+            if (robot.userData.isAtTowerTop) {
+                // Go Down
+                robot.position.copy(robot.userData.preTowerPosition);
+                robot.quaternion.copy(robot.userData.preTowerQuaternion);
+                
+                robot.userData.isAtTowerTop = false;
+                robot.userData.currentWatchTower = null;
+            } else {
+                // Go Up
+                robot.userData.preTowerPosition.copy(robot.position);
+                robot.userData.preTowerQuaternion.copy(robot.quaternion);
+                robot.userData.towerViewYaw = 0;
+                robot.userData.towerViewPitch = 0;
+
+                const towerTopPos = new THREE.Vector3(0, tower.userData.topY, 0);
+                const worldPos = towerTopPos.applyMatrix4(tower.matrixWorld);
+                const localPos = planet.worldToLocal(worldPos);
+                robot.position.copy(localPos);
+
+                const up = localPos.clone().normalize();
+                robot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+                robot.quaternion.multiply(tower.quaternion);
+
+                robot.userData.isAtTowerTop = true;
+                robot.userData.currentWatchTower = tower;
+            }
+        }
+
+        function promptToRemoveItem() {
+            if (!robot || isRemovalPromptActive || robot.userData.isAtTowerTop) return;
+
+            const robotPos = robot.position.clone();
+            const checkRadius = 15;
+            let closestItem = null;
+            let minDistance = checkRadius;
+
+            const allPlayerItems = [
+                ...harvesters, ...troopers, ...trooperTowers, ...residentHouses, 
+                ...tradeCenters, ...residentSkyscrapers, ...watchTowers,
+                ...planet.children.filter(c => c.userData.type === 'pyramid' || c.userData.type === 'tower' || c.userData.type === 'wall')
+            ];
+            
+            const uniqueItems = [...new Map(allPlayerItems.map(item => [item.uuid, item])).values()];
+
+            for (const item of uniqueItems) {
+                const distance = robotPos.distanceTo(item.position);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestItem = item;
+                }
+            }
+
+            if (closestItem) {
+                itemToRemove = closestItem;
+                isRemovalPromptActive = true;
+                document.exitPointerLock();
+                const itemName = (buildableItems.find(bi => bi.createGameObject().userData.type === itemToRemove.userData.type)?.name || itemToRemove.userData.type.replace(/_/g, ' ')).toLowerCase();
+                removalPrompt.innerHTML = `Do you really want to remove the ${itemName}?<br/>[Y] / [N]`;
+                removalPrompt.style.display = 'block';
+            }
+        }
+
+        function removeItem() {
+            if (!itemToRemove) return;
+            
+            const type = itemToRemove.userData.type;
+            const itemData = buildableItems.find(bi => bi.createGameObject().userData.type === type);
+            if(itemData) {
+                oreCollected += Math.floor(itemData.cost / 2);
+                updateHud();
+            }
+
+            // --- Scatter Effect Logic ---
+            let scatterColor = 0xaaaaaa; // Default color
+            if (itemToRemove.material && itemToRemove.material.color) {
+                scatterColor = itemToRemove.material.color.getHex();
+            } else if (itemToRemove.isGroup) {
+                const mainBody = itemToRemove.getObjectByName('mainBody');
+                if (mainBody && mainBody.material && mainBody.material.color) {
+                    scatterColor = mainBody.material.color.getHex();
+                } else {
+                    const firstMesh = itemToRemove.children.find(c => c.isMesh && c.material && c.material.color);
+                    if (firstMesh) {
+                        scatterColor = firstMesh.material.color.getHex();
+                    }
+                }
+            }
+            createScatterEffect(itemToRemove.position.clone(), 30, scatterColor);
+            // --- End Scatter Effect Logic ---
+
+            harvesters = harvesters.filter(i => i !== itemToRemove);
+            troopers = troopers.filter(i => i !== itemToRemove);
+            trooperTowers = trooperTowers.filter(i => i !== itemToRemove);
+            residentHouses = residentHouses.filter(i => i !== itemToRemove);
+            tradeCenters = tradeCenters.filter(i => i !== itemToRemove);
+            residentSkyscrapers = residentSkyscrapers.filter(i => i !== itemToRemove);
+            watchTowers = watchTowers.filter(i => i !== itemToRemove);
+
+            if (itemToRemove.parent) {
+                itemToRemove.parent.remove(itemToRemove);
+            }
+            
+            cancelRemoval();
+        }
+
+        function cancelRemoval() {
+            isRemovalPromptActive = false;
+            itemToRemove = null;
+            removalPrompt.style.display = 'none';
+        }
+
+
+        function toggleTowerControls() {
+            if (isGameOver || isMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive) return;
+            
+            isTowerMenuOpen = !isTowerMenuOpen;
+            towerControlsPanel.style.display = isTowerMenuOpen ? 'block' : 'none';
+
+            if (isTowerMenuOpen) {
+                document.exitPointerLock();
+                activeTower = nearbyTower;
+                const light = activeTower.children.find(c => c.isPointLight);
+                if (light) {
+                    const slider = document.getElementById('tower-light-slider');
+                    slider.value = light.power;
+                    document.getElementById('tower-light-value').textContent = light.power;
+                }
+                menuDisplayObject = activeTower.clone();
+                menuDisplayObject.scale.set(3,3,3);
+                menuScene.add(menuDisplayObject);
+            } else {
+                activeTower = null;
+                if(menuDisplayObject) menuScene.remove(menuDisplayObject);
+            }
+        }
+
+        function toggleColorPicker() {
+            if (isGameOver || isMenuOpen || isStockMarketOpen || isTowerMenuOpen || isRemovalPromptActive) return;
+            
+            isColorPickerOpen = !isColorPickerOpen;
+            colorPickerPanel.style.display = isColorPickerOpen ? 'block' : 'none';
+
+            if (isColorPickerOpen) {
+                document.exitPointerLock();
+                activeBuilding = nearbyBuilding;
+                buildingColorPicker.value = activeBuilding.userData.color;
+                
+                menuDisplayObject = activeBuilding.clone();
+                menuDisplayObject.scale.set(
+                    menuDisplayObject.userData.type === 'resident_skyscraper' ? 1.5 : 3,
+                    menuDisplayObject.userData.type === 'resident_skyscraper' ? 1.5 : 3,
+                    menuDisplayObject.userData.type === 'resident_skyscraper' ? 1.5 : 3
+                );
+                menuScene.add(menuDisplayObject);
+            } else {
+                activeBuilding = null;
+                if(menuDisplayObject) menuScene.remove(menuDisplayObject);
+            }
+        }
+        
+        function updateActiveBuildingColor(event) {
+            const newColor = event.target.value;
+            if (!activeBuilding) return;
+            
+            activeBuilding.userData.color = newColor;
+            const mainBody = activeBuilding.getObjectByName('mainBody');
+            if (mainBody) {
+                mainBody.material.color.set(newColor);
+            }
+            if (menuDisplayObject) {
+                 const menuBody = menuDisplayObject.getObjectByName('mainBody');
+                 if (menuBody) {
+                    menuBody.material.color.set(newColor);
+                 }
+            }
+        }
+
+        function toggleStockMarket() {
+            if (isGameOver || isMenuOpen || isTowerMenuOpen || isColorPickerOpen || isRemovalPromptActive) return;
+            isStockMarketOpen = !isStockMarketOpen;
+            stockMarketPanel.style.display = isStockMarketOpen ? 'block' : 'none';
+
+            if (isStockMarketOpen) {
+                document.exitPointerLock();
+                stockMarketSelection = 'buy';
+                updateStockMarketSelectionUI();
+                updateStockMarketInfo();
+                drawStockChart();
+                menuDisplayObject = buildableItems.find(i => i.name === "Trade Center").createMenuModel();
+                menuDisplayObject.scale.set(1.5, 1.5, 1.5);
+                menuScene.add(menuDisplayObject);
+            } else {
+                 if(menuDisplayObject) menuScene.remove(menuDisplayObject);
+            }
+        }
+
+        function updateStockMarketInfo() {
+            document.getElementById('market-current-price').textContent = `Price: ${stockPrice} Ore`;
+            document.getElementById('market-player-ore').textContent = `Your Ore: ${Math.round(oreCollected)}`;
+            document.getElementById('market-player-stocks').textContent = `Your Stocks: ${playerStocks}`;
+        }
+
+        function updateStockMarketSelectionUI() {
+            document.getElementById('market-buy-btn').classList.toggle('selected', stockMarketSelection === 'buy');
+            document.getElementById('market-sell-btn').classList.toggle('selected', stockMarketSelection === 'sell');
+        }
+
+        function buyStock() {
+            if (oreCollected >= stockPrice + stockMarketFee) {
+                oreCollected -= (stockPrice + stockMarketFee);
+                playerStocks++;
+                updateHud();
+                updateStockMarketInfo();
+            }
+        }
+
+        function sellStock() {
+            if (playerStocks > 0) {
+                playerStocks--;
+                oreCollected += Math.max(0, stockPrice - stockMarketFee);
+                updateHud();
+                updateStockMarketInfo();
+            }
+        }
+
+        function drawStockChart() {
+            const ctx = stockChartCtx;
+            const w = stockChart.width;
+            const h = stockChart.height;
+            const padding = 20;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+            ctx.strokeStyle = "#00ffff";
+            ctx.lineWidth = 2;
+            ctx.font = "12px monospace";
+
+            if (stockPriceHistory.length < 2) {
+                ctx.fillText("Not enough data to draw chart.", w / 2 - 80, h / 2);
+                return;
+            }
+
+            const maxPrice = Math.max(...stockPriceHistory);
+            const minPrice = Math.min(...stockPriceHistory);
+            const priceRange = maxPrice - minPrice > 0 ? maxPrice - minPrice : 1;
+
+            ctx.textAlign = "right";
+            ctx.fillText(maxPrice, padding - 4, padding + 4);
+            ctx.fillText(minPrice, padding - 4, h - padding);
+
+            ctx.beginPath();
+            for (let i = 0; i < stockPriceHistory.length; i++) {
+                const x = (i / (stockPriceHistory.length - 1)) * (w - padding * 2) + padding;
+                const y = h - padding - ((stockPriceHistory[i] - minPrice) / priceRange) * (h - padding * 2);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+        
+        function updateHarvester(harvester, deltaTime) {
+            if (isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive) return;
+            const harvesterSpeed = 15.0;
+            const harvesterTurnSpeed = 1.0;
+
+            if (harvester.userData.state === 'IDLE') {
+                findClosestOre(harvester);
+                if (harvester.userData.target) {
+                    harvester.userData.state = 'SEEKING';
+                }
+                return;
+            }
+
+            if (harvester.userData.state === 'BACKING_UP') {
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(harvester.quaternion);
+                harvester.position.add(forward.multiplyScalar(-harvesterSpeed * 0.5 * deltaTime));
+                harvester.userData.backupTimer -= deltaTime;
+                if (harvester.userData.backupTimer <= 0) {
+                    harvester.userData.state = 'IDLE';
+                }
+                snapObjectToSurface(harvester);
+                return;
+            }
+
+            if (harvester.userData.state === 'SEEKING') {
+                if (!harvester.userData.target || !harvester.userData.target.parent) {
+                    harvester.userData.state = 'IDLE';
+                    return;
+                }
+
+                const targetWorldPos = new THREE.Vector3().setFromMatrixPosition(harvester.userData.target.matrixWorld);
+                const harvesterWorldPos = new THREE.Vector3().setFromMatrixPosition(harvester.matrixWorld);
+
+                if (harvesterWorldPos.distanceTo(targetWorldPos) < 2.5) { 
+                    planet.remove(harvester.userData.target);
+                    oreCollected++;
+                    updateHud();
+                    harvester.userData.state = 'IDLE';
+                } else { 
+                    const planetWorldQuat = planet.getWorldQuaternion(new THREE.Quaternion());
+                    const worldUp = harvesterWorldPos.clone().sub(planet.getWorldPosition(new THREE.Vector3())).normalize();
+                    const tempMatrix = new THREE.Matrix4().lookAt(harvesterWorldPos, targetWorldPos, worldUp);
+                    const targetWorldQuat = new THREE.Quaternion().setFromRotationMatrix(tempMatrix);
+                    const targetLocalQuat = planetWorldQuat.clone().invert().multiply(targetWorldQuat);
+                    harvester.quaternion.slerp(targetLocalQuat, harvesterTurnSpeed * deltaTime);
+                    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(harvester.quaternion);
+                    harvester.position.add(forward.multiplyScalar(harvesterSpeed * deltaTime));
+                }
+            }
+            
+            snapObjectToSurface(harvester);
+            const finalHarvesterPos = new THREE.Vector3().setFromMatrixPosition(harvester.matrixWorld);
+            const collisionRadius = 2.5;
+
+            for (const child of planet.children) {
+                 if (child !== harvester && (child.userData.type === 'tree' || child.userData.type === 'rock' || child.userData.type === 'wall' || child.userData.type === 'robot' || child.userData.type === 'trooper' || child.userData.type === 'enemy' || child.userData.type === 'pyramid' || child.userData.type === 'tower' || child.userData.type === 'trooper_tower' || child.userData.type === 'resident_house' || child.userData.type === 'trade_center' || child.userData.type === 'resident_skyscraper' || child.userData.type === 'watch_tower')) {
+                    const childWorldPos = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+                    if (finalHarvesterPos.distanceTo(childWorldPos) < collisionRadius) {
+                        harvester.userData.state = 'BACKING_UP';
+                        harvester.userData.backupTimer = 1.5; 
+                        break; 
+                    }
+                }
+            }
+        }
+        
+        function findClosestOre(harvester) {
+            let closestOre = null;
+            let minDistance = Infinity;
+            const harvesterPos = harvester.position; 
+            const waterSurfaceRadius = planetParams.radius + 0.1;
+
+            for (const child of planet.children) {
+                if (child.userData.type === 'ore') {
+                    const orePos = child.position;
+                    if (orePos.length() < waterSurfaceRadius) continue;
+                    const distance = harvesterPos.distanceTo(orePos);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestOre = child;
+                    }
+                }
+            }
+            harvester.userData.target = closestOre;
+        }
+
+        function snapObjectToSurface(object) {
+            object.updateWorldMatrix(true, false);
+            const objectWorldPos = new THREE.Vector3().setFromMatrixPosition(object.matrixWorld);
+            const planetCenterWorld = new THREE.Vector3().setFromMatrixPosition(planet.matrixWorld);
+            const downVector = planetCenterWorld.clone().sub(objectWorldPos).normalize();
+            raycaster.set(objectWorldPos.clone().sub(downVector.clone().multiplyScalar(10)), downVector);
+            const intersects = raycaster.intersectObject(planet, false);
+
+            if (intersects.length > 0) {
+                const intersection = intersects[0];
+                const newLocalPos = planet.worldToLocal(intersection.point.clone());
+                object.position.copy(newLocalPos);
+
+                const worldSurfaceNormal = intersection.face.normal.clone().normalize();
+                const objectWorldUp = new THREE.Vector3(0, 1, 0).applyQuaternion(object.getWorldQuaternion(new THREE.Quaternion()));
+                const correction = new THREE.Quaternion().setFromUnitVectors(objectWorldUp, worldSurfaceNormal);
+                object.quaternion.premultiply(correction);
+            }
+        }
+
+        function updateEnemySpawner(deltaTime) {
+            if (isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive) return;
+            enemySpawnTimer += deltaTime;
+            if (enemySpawnTimer >= planetParams.enemySpawnInterval) {
+                enemySpawnTimer = 0;
+                spawnEnemy();
+            }
+        }
+
+        function spawnEnemy() {
+            if (!robot) return;
+            
+            const robotWorldPos = new THREE.Vector3().setFromMatrixPosition(robot.matrixWorld);
+            const robotWorldQuat = robot.getWorldQuaternion(new THREE.Quaternion());
+            
+            const worldUp = new THREE.Vector3(0, 1, 0).applyQuaternion(robotWorldQuat);
+            const angle = Math.random() * Math.PI * 2;
+            const randomRotation = new THREE.Quaternion().setFromAxisAngle(worldUp, angle);
+
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(robotWorldQuat);
+            const spawnDirection = forward.clone().applyQuaternion(randomRotation);
+
+            const dist = 40 + Math.random() * 20;
+            const spawnPointWorld = robotWorldPos.clone().add(spawnDirection.multiplyScalar(dist));
+
+            const enemy = createEnemyCarModel();
+            enemy.position.copy(planet.worldToLocal(spawnPointWorld));
+            
+            snapObjectToSurface(enemy);
+
+            planet.add(enemy);
+            enemies.push(enemy);
+        }
+        
+        function hasLineOfSight(source, target) {
+            if (!source || !target) return false;
+
+            const sourcePos = new THREE.Vector3().setFromMatrixPosition(source.matrixWorld);
+            const targetPos = new THREE.Vector3().setFromMatrixPosition(target.matrixWorld);
+            const direction = targetPos.clone().sub(sourcePos);
+            const distance = direction.length();
+            direction.normalize();
+
+            raycaster.set(sourcePos, direction);
+            const blockers = planet.children.filter(c => 
+                c.uuid !== source.uuid && c.uuid !== target.uuid &&
+                (c.userData.type === 'rock' || c.userData.type === 'wall' || c.userData.type === 'pyramid' || c.userData.type === 'enemy' || c.userData.type === 'trooper' || c.userData.type === 'robot' || c.userData.type === 'harvester' || c.userData.type === 'trooper_tower' || c.userData.type === 'resident_house' || c.userData.type === 'trade_center' || c.userData.type === 'resident_skyscraper' || c.userData.type === 'watch_tower')
+            );
+            
+            const intersects = raycaster.intersectObjects(blockers, true);
+
+            if (intersects.length > 0 && intersects[0].distance < distance) {
+                return false;
+            }
+            return true;
+        }
+        
+        function updateVehicleAI(vehicle, deltaTime, findTargetFn, allyTeam) {
+            if (isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive) return;
+            const speed = 12.0;
+            const turnSpeed = 1.0;
+            const attackRange = (allyTeam === 'enemy') ? 15 : 40; 
+            const fireRate = (allyTeam === 'enemy') ? 0.8 : 1.5;
+
+            vehicle.userData.shootCooldown = (vehicle.userData.shootCooldown || 0) - deltaTime;
+            
+            if (vehicle.userData.state === 'BACKING_UP') {
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(vehicle.quaternion);
+                vehicle.position.add(forward.multiplyScalar(-speed * 0.7 * deltaTime));
+                vehicle.rotateY(vehicle.userData.backupTurnDirection * turnSpeed * deltaTime);
+                vehicle.userData.backupTimer -= deltaTime;
+                if (vehicle.userData.backupTimer <= 0) {
+                    vehicle.userData.state = 'SEEKING';
+                }
+                snapObjectToSurface(vehicle);
+                return;
+            }
+            
+            if (!vehicle.userData.target || !vehicle.userData.target.parent) {
+                vehicle.userData.target = findTargetFn(vehicle.position);
+                vehicle.userData.state = vehicle.userData.target ? 'SEEKING' : 'IDLE';
+            }
+            
+            if (vehicle.userData.state === 'IDLE') return;
+
+            const target = vehicle.userData.target;
+            const targetWorldPos = new THREE.Vector3().setFromMatrixPosition(target.matrixWorld);
+            const vehicleWorldPos = new THREE.Vector3().setFromMatrixPosition(vehicle.matrixWorld);
+            const distanceToTarget = vehicleWorldPos.distanceTo(targetWorldPos);
+
+            const planetWorldQuat = planet.getWorldQuaternion(new THREE.Quaternion());
+            const worldUp = vehicleWorldPos.clone().sub(planet.getWorldPosition(new THREE.Vector3())).normalize();
+            const tempMatrix = new THREE.Matrix4().lookAt(vehicleWorldPos, targetWorldPos, worldUp);
+            const targetWorldQuat = new THREE.Quaternion().setFromRotationMatrix(tempMatrix);
+            const targetLocalQuat = planetWorldQuat.clone().invert().multiply(targetWorldQuat);
+            vehicle.quaternion.slerp(targetLocalQuat, turnSpeed * deltaTime);
+            
+            const hasLoS = hasLineOfSight(vehicle, target);
+
+            if (allyTeam === 'enemy' && !hasLoS) {
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(vehicle.quaternion);
+                vehicle.position.add(right.multiplyScalar((vehicle.userData.strafeDirection || 1) * speed * 0.5 * deltaTime));
+            } else {
+                if (distanceToTarget > attackRange) {
+                    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(vehicle.quaternion);
+                    vehicle.position.add(forward.multiplyScalar(speed * deltaTime));
+                } else if (hasLoS) {
+                    if (vehicle.userData.shootCooldown <= 0) {
+                        shoot(vehicle, target, allyTeam);
+                        vehicle.userData.shootCooldown = fireRate;
+                    }
+                }
+            }
+
+            snapObjectToSurface(vehicle);
+            const collisionRadius = 2.0;
+
+            for (const child of planet.children) {
+                 if (child !== vehicle && child !== target && (child.userData.type === 'tree' || child.userData.type === 'rock' || child.userData.type === 'wall' || child.userData.type === 'harvester' || child.userData.type === 'robot' || child.userData.type === 'trooper' || child.userData.type === 'enemy' || child.userData.type === 'pyramid' || child.userData.type === 'tower' || child.userData.type === 'trooper_tower' || child.userData.type === 'resident_house' || child.userData.type === 'trade_center' || child.userData.type === 'resident_skyscraper' || child.userData.type === 'watch_tower')) {
+                    const childWorldPos = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+                    if (vehicleWorldPos.distanceTo(childWorldPos) < collisionRadius) {
+                        vehicle.userData.state = 'BACKING_UP';
+                        vehicle.userData.backupTimer = 1.2; 
+                        vehicle.userData.backupTurnDirection = (Math.random() < 0.5) ? 1 : -1;
+                        if(allyTeam === 'enemy') vehicle.userData.strafeDirection = vehicle.userData.backupTurnDirection;
+                        break; 
+                    }
+                }
+            }
+        }
+
+        function updateTrooper(trooper, deltaTime) {
+            updateVehicleAI(trooper, deltaTime, findClosestEnemy, 'player');
+        }
+
+        function updateEnemy(enemy, deltaTime) {
+            updateVehicleAI(enemy, deltaTime, findClosestPlayerUnit, 'enemy');
+        }
+
+        function updateTrooperTower(tower, deltaTime) {
+            if (isMenuOpen || isTowerMenuOpen || isStockMarketOpen || isColorPickerOpen || isRemovalPromptActive) return;
+            const fireRate = 1.0;
+            const range = 70;
+            tower.userData.shootCooldown = (tower.userData.shootCooldown || 0) - deltaTime;
+            
+            if (!tower.userData.target || !tower.userData.target.parent) {
+                tower.userData.target = findClosestEnemy(tower.position);
+            }
+
+            if (tower.userData.target) {
+                const targetPos = new THREE.Vector3().setFromMatrixPosition(tower.userData.target.matrixWorld);
+                const towerPos = new THREE.Vector3().setFromMatrixPosition(tower.matrixWorld);
+                
+                if (towerPos.distanceTo(targetPos) < range && hasLineOfSight(tower, tower.userData.target)) {
+                    const head = tower.getObjectByName('turretHead');
+                    if (head) {
+                        const planetWorldQuat = planet.getWorldQuaternion(new THREE.Quaternion());
+                        const worldUp = towerPos.clone().sub(planet.getWorldPosition(new THREE.Vector3())).normalize();
+                        const tempMatrix = new THREE.Matrix4().lookAt(towerPos, targetPos, worldUp);
+                        const targetWorldQuat = new THREE.Quaternion().setFromRotationMatrix(tempMatrix);
+                        const targetLocalQuat = planetWorldQuat.clone().invert().multiply(targetWorldQuat);
+                        head.quaternion.slerp(targetLocalQuat, 0.1);
+                    }
+                    if (tower.userData.shootCooldown <= 0) {
+                        shoot(tower, tower.userData.target, 'player');
+                        tower.userData.shootCooldown = fireRate;
+                    }
+                } else {
+                    tower.userData.target = null;
+                }
+            }
+        }
+        
+        function findClosestEnemy(currentPos) {
+            return findClosestUnit(currentPos, enemies);
+        }
+
+        function findClosestPlayerUnit(currentPos) {
+            const pyramids = planet.children.filter(c => c.userData.type === 'pyramid');
+            const playerUnits = [robot, ...troopers, ...harvesters, ...trooperTowers, ...residentHouses, ...tradeCenters, ...residentSkyscrapers, ...watchTowers, ...pyramids].filter(u => u && u.parent);
+            return findClosestUnit(currentPos, playerUnits);
+        }
+
+        function findClosestUnit(currentPos, unitList) {
+             let closest = null;
+             let minDistance = Infinity;
+             for (const unit of unitList) {
+                if (!unit || !unit.parent) continue;
+                if (robot && robot.userData.isAtTowerTop && unit.userData.type === 'robot') continue; // Don't target robot on tower
+                const dist = currentPos.distanceTo(unit.position);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closest = unit;
+                }
+             }
+             return closest;
+        }
+
+        function shoot(shooter, target, team) {
+            const muzzleTipOffset = (shooter.userData.type === 'trooper_tower') ? new THREE.Vector3(0, 3, 0) : new THREE.Vector3(0, 1.2, -1.75);
+            const muzzleFlash = new THREE.Mesh(
+                new THREE.SphereGeometry(0.3, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.8 })
+            );
+            
+            const head = shooter.getObjectByName('turretHead') || shooter;
+            muzzleTipOffset.applyQuaternion(head.quaternion);
+            muzzleFlash.position.copy(muzzleTipOffset);
+            
+            shooter.add(muzzleFlash);
+            setTimeout(() => shooter.remove(muzzleFlash), 60);
+
+            const projectileMat = new THREE.MeshBasicMaterial({ color: team === 'player' ? 0x00ffff : 0xff00ff });
+            const projectile = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), projectileMat);
+            
+            const shooterWorldPos = new THREE.Vector3();
+            muzzleFlash.getWorldPosition(shooterWorldPos);
+            
+            const targetWorldPos = new THREE.Vector3();
+            target.getWorldPosition(targetWorldPos);
+
+            let direction = targetWorldPos.clone().sub(shooterWorldPos);
+
+            const planetWorldPos = new THREE.Vector3();
+            planet.getWorldPosition(planetWorldPos);
+            const worldUp = shooterWorldPos.clone().sub(planetWorldPos).normalize();
+            direction.projectOnPlane(worldUp).normalize();
+            
+            const localDirection = direction.clone().transformDirection(planet.matrixWorld.clone().invert());
+
+            projectile.position.copy(planet.worldToLocal(shooterWorldPos));
+            projectile.userData.velocity = localDirection.multiplyScalar(100);
+            projectile.userData.team = team;
+            projectile.userData.damage = 10;
+            projectile.userData.life = 2;
+
+            projectiles.push(projectile);
+            planet.add(projectile);
+        }
+
+        function updateProjectiles(deltaTime) {
+            const projectileSpeed = 100;
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.position.add(p.userData.velocity.clone().multiplyScalar(deltaTime));
+                
+                const surfaceNormal = p.position.clone().normalize();
+                p.userData.velocity.projectOnPlane(surfaceNormal);
+                p.userData.velocity.normalize().multiplyScalar(projectileSpeed);
+
+                p.position.setLength(planetParams.radius + 0.3);
+
+                p.userData.life -= deltaTime;
+                let hit = false;
+                const pWorldPos = new THREE.Vector3();
+                p.getWorldPosition(pWorldPos);
+
+                const checkCollision = (target, radius = 2.0) => {
+                    if (!target || !target.parent) return false;
+                    const targetWorldPos = new THREE.Vector3();
+                    target.getWorldPosition(targetWorldPos);
+                    return pWorldPos.distanceTo(targetWorldPos) < radius;
+                };
+
+                if (p.userData.team === 'enemy') {
+                    const pyramids = planet.children.filter(c => c.userData.type === 'pyramid');
+                    const targets = [robot, ...troopers, ...trooperTowers, ...harvesters, ...residentHouses, ...tradeCenters, ...residentSkyscrapers, ...watchTowers, ...pyramids].filter(u => u && u.parent);
+                    
+                    for (const target of targets) {
+                        let radius = 2.0;
+                        if (target.userData.type === 'trade_center') radius = 6.0;
+                        if (target.userData.type === 'resident_skyscraper') radius = 8.0;
+                        if (target.userData.type === 'resident_house') radius = 4.0;
+                        if (target.userData.type === 'pyramid') radius = 3.0;
+                        if (target.userData.type === 'watch_tower') radius = 5.0;
+                        if (target.userData.type === 'robot' && target.userData.isAtTowerTop) continue;
+
+                        if (checkCollision(target, radius)) {
+                            if (target.userData.type === 'robot') {
+                                createScatterEffect(p.position, 10, 0xffaa00);
+                                robotEnergy -= p.userData.damage;
+                                const robotBody = robot.children[0];
+                                if (robotBody) {
+                                    robotBody.material.color.set(0xff0000);
+                                    setTimeout(() => {
+                                        if (robotBody) robotBody.material.color.set(0xbbbbbb);
+                                    }, 150);
+                                }
+                                updateHud();
+                            } else {
+                                target.userData.health -= p.userData.damage;
+                                if (target.userData.health <= 0) {
+                                    let explosionColor, explosionCount = 50;
+                                    switch(target.userData.type) {
+                                        case 'harvester':           explosionColor = 0x0055cc; harvesters = harvesters.filter(t => t !== target); break;
+                                        case 'trooper':             explosionColor = 0xcccccc; troopers = troopers.filter(t => t !== target); break;
+                                        case 'trooper_tower':       explosionColor = 0xcccccc; trooperTowers = trooperTowers.filter(t => t !== target); break;
+                                        case 'resident_house':      explosionColor = 0x8B4513; residentHouses = residentHouses.filter(t => t !== target); break;
+                                        case 'trade_center':        explosionColor = 0x77aaff; tradeCenters = tradeCenters.filter(t => t !== target); break;
+                                        case 'resident_skyscraper': explosionColor = 0xc0c0c0; residentSkyscrapers = residentSkyscrapers.filter(s => s !== target); break;
+                                        case 'pyramid':             explosionColor = 0xcccc00; break;
+                                        case 'watch_tower':         explosionColor = 0x555555; explosionCount = 150; watchTowers = watchTowers.filter(t => t !== target); 
+                                            if (robot && robot.userData.currentWatchTower === target) {
+                                                robotEnergy = 0;
+                                            }
+                                            break;
+                                    }
+                                    createScatterEffect(target.position, explosionCount, explosionColor);
+                                    target.parent.remove(target);
+                                }
+                            }
+                            hit = true;
+                            break;
+                        }
+                    }
+                } else { // player team
+                     for (const target of enemies) {
+                        if (checkCollision(target)) {
+                             target.userData.health -= p.userData.damage;
+                             if (target.userData.health <= 0) {
+                                createScatterEffect(target.position, 30, 0xcc0000);
+                                enemies = enemies.filter(e => e !== target);
+                                target.parent.remove(target);
+                             }
+                             hit = true;
+                             break;
+                        }
+                     }
+                }
+
+                if (!hit) {
+                    const blockers = planet.children.filter(c => c.userData.type === 'rock' || c.userData.type === 'wall' || c.userData.type === 'pyramid' || c.userData.type === 'trooper_tower' || c.userData.type === 'trade_center' || c.userData.type === 'resident_house' || c.userData.type === 'resident_skyscraper' || c.userData.type === 'watch_tower');
+                    for (const blocker of blockers) {
+                         if (p.userData.team === 'player' && (blocker.userData.type !== 'rock' && blocker.userData.type !== 'wall')) continue;
+                        let radius = 1.0;
+                        if (blocker.userData.type === 'wall') radius = 5.0;
+                        if (blocker.userData.type === 'pyramid') radius = 4.0;
+                        if (blocker.userData.type === 'trooper_tower') radius = 3.0;
+                        if (blocker.userData.type === 'watch_tower') radius = 5.0;
+
+                        if (checkCollision(blocker, radius)) {
+                            createScatterEffect(p.position, 5, 0x888888);
+                            hit = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hit || p.userData.life <= 0) {
+                    projectiles.splice(i, 1);
+                    p.parent.remove(p);
+                }
+            }
+        }
+        
+        function createScatterEffect(position, count, color) {
+            for (let i = 0; i < count; i++) {
+                const particleMat = new THREE.MeshBasicMaterial({ color: color });
+                const particle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), particleMat);
+
+                particle.position.copy(position);
+                const velocity = new THREE.Vector3(
+                    Math.random() - 0.5,
+                    Math.random() - 0.5,
+                    Math.random() - 0.5
+                ).normalize().multiplyScalar(15 + Math.random() * 10);
+                
+                particle.userData.velocity = velocity;
+                particle.userData.life = 0.5 + Math.random() * 0.5;
+
+                particles.push(particle);
+                planet.add(particle);
+            }
+        }
+
+        function updateParticles(deltaTime) {
+            const gravity = 30.0;
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                
+                const down = p.position.clone().normalize().multiplyScalar(-1);
+                p.userData.velocity.add(down.multiplyScalar(gravity * deltaTime));
+                
+                p.position.add(p.userData.velocity.clone().multiplyScalar(deltaTime));
+                p.userData.life -= deltaTime;
+
+                if (p.userData.life <= 0) {
+                    particles.splice(i, 1);
+                    p.parent.remove(p);
+                }
+            }
+        }
+        
+        function createVehicleModel(colors) {
+            const group = new THREE.Group();
+            const bodyMat = new THREE.MeshPhongMaterial({ color: colors.body });
+            const trackMat = new THREE.MeshPhongMaterial({ color: colors.track });
+            const rifleMat = new THREE.MeshPhongMaterial({ color: colors.rifle });
+
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 3.5), bodyMat);
+            body.position.y = 0.6; group.add(body);
+            const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 4), trackMat);
+            trackL.position.set(-1.1, 0.3, 0); group.add(trackL);
+            const trackR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 4), trackMat);
+            trackR.position.set(1.1, 0.3, 0); group.add(trackR);
+            const rifle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5), rifleMat);
+            rifle.rotation.x = Math.PI / 2;
+            rifle.position.set(0, 1.2, -0.5); group.add(rifle);
+            
+            group.scale.set(0.4, 0.4, 0.4);
+            return group;
+        }
+
+        function createEnemyCarModel() {
+            const enemy = createVehicleModel({ body: 0x1a1a1a, track: 0xcc0000, rifle: 0xdddddd });
+            enemy.userData.type = 'enemy';
+            enemy.userData.health = 50;
+            enemy.userData.state = 'IDLE';
+            return enemy;
+        }
+
+        function createHarvesterTruckModel(materialOptions) {
+            const group = new THREE.Group();
+            const cabMat = new THREE.MeshPhongMaterial({ color: materialOptions.cab || 0x0088ff });
+            const bedMat = new THREE.MeshPhongMaterial({ color: materialOptions.bed || 0xaaaaaa });
+            const wheelMat = new THREE.MeshPhongMaterial({ color: materialOptions.wheels || 0x222222 });
+
+            const bed = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 5), bedMat);
+            bed.position.y = 1;
+            group.add(bed);
+
+            const cab = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 1.8), cabMat);
+            cab.position.set(0, 1.75, -1.6);
+            group.add(cab);
+
+            const wheelGeom = new THREE.CylinderGeometry(0.5, 0.5, 0.5, 16);
+            const wheelPositions = [
+                [-1.5, 0.8, -1.5], [1.5, 0.8, -1.5],
+                [-1.5, 0.8, 0], [1.5, 0.8, 0],
+                [-1.5, 0.8, 1.5], [1.5, 0.8, 1.5]
+            ];
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeom, wheelMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(pos[0], pos[1], pos[2]);
+                group.add(wheel);
+            });
+            group.scale.set(0.4, 0.4, 0.4);
+            return group;
+        }
+
+        const buildableItems = [
+            {
+                name: "Wall",
+                cost: 1,
+                createMenuModel: () => new THREE.Mesh(new THREE.BoxGeometry(4, 2, 0.5), new THREE.MeshStandardMaterial({ color: 0xcccccc })),
+                createGameObject: () => {
+                    const wall = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 0.75), new THREE.MeshPhongMaterial({ color: 0xaaaaaa }));
+                    wall.userData.type = 'wall';
+                    return wall;
+                }
+            },
+            {
+                name: "Harvester Truck",
+                cost: 5,
+                createMenuModel: () => createHarvesterTruckModel({ cab: 0x33aaff, bed: 0xcccccc, wheels: 0x333333 }),
+                createGameObject: () => {
+                    const truck = createHarvesterTruckModel({ cab: 0x0055cc, bed: 0x777777, wheels: 0x111111 });
+                    truck.userData.type = 'harvester';
+                    truck.userData.health = 50;
+                    truck.userData.state = 'IDLE';
+                    truck.userData.backupTimer = 0;
+                    return truck;
+                }
+            },
+            {
+                name: "Trooper Car",
+                cost: 5,
+                createMenuModel: () => createVehicleModel({ body: 0x00994C, track: 0xcccccc, rifle: 0xaaaaaa }),
+                createGameObject: () => {
+                    const trooper = createVehicleModel({ body: 0x00994C, track: 0xeeeeee, rifle: 0x888888 });
+                    trooper.userData.type = 'trooper';
+                    trooper.userData.health = 100;
+                    trooper.userData.state = 'IDLE';
+                    return trooper;
+                }
+            },
+            {
+                name: "Pyramid Power Station",
+                cost: 5,
+                createMenuModel: () => new THREE.Mesh(new THREE.ConeGeometry(2, 3, 4), new THREE.MeshStandardMaterial({ color: 0xffff00 })),
+                createGameObject: () => {
+                    const pyramid = new THREE.Mesh(new THREE.ConeGeometry(3, 4.5, 4), new THREE.MeshPhongMaterial({ color: 0xcccc00 }));
+                    pyramid.userData.type = 'pyramid';
+                    pyramid.userData.health = 150; 
+                    pyramid.position.y = 2.25;
+                    return pyramid;
+                }
+            },
+            {
+                name: "Tower Light Station",
+                cost: 5,
+                createMenuModel: () => {
+                    const group = new THREE.Group();
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 4), new THREE.MeshStandardMaterial({ color: 0x999999 }));
+                    const light = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0xffffaa }));
+                    light.position.y = 2;
+                    group.add(pole, light);
+                    return group;
+                },
+                createGameObject: () => {
+                    const group = new THREE.Group();
+                    group.userData.type = 'tower';
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 5), new THREE.MeshPhongMaterial({ color: 0x777777 }));
+                    pole.position.y = 2.5;
+                    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.4), new THREE.MeshPhongMaterial({ color: 0x777777 }));
+                    base.position.y = 0.2;
+                    const towerLight = new THREE.PointLight(0xffffee, 3000, 150);
+                    towerLight.position.y = 5.5;
+                    group.add(pole, base, towerLight);
+                    return group;
+                }
+            },
+            {
+                name: "Trooper Tower",
+                cost: 15,
+                createMenuModel: () => {
+                    const group = new THREE.Group();
+                    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 1, 8), new THREE.MeshStandardMaterial({color: 0x555555}));
+                    const head = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 16), new THREE.MeshStandardMaterial({color: 0x00994C}));
+                    head.position.y = 1;
+                    group.add(base, head);
+                    return group;
+                },
+                createGameObject: () => {
+                    const group = new THREE.Group();
+                    group.userData.type = 'trooper_tower';
+                    group.userData.health = 200;
+                    const base = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.5, 2, 8), new THREE.MeshPhongMaterial({color: 0x444444}));
+                    base.position.y = 1;
+                    const head = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), new THREE.MeshPhongMaterial({color: 0x00773C}));
+                    head.position.y = 2.5;
+                    head.name = 'turretHead';
+                    group.add(base, head);
+                    return group;
+                }
+            },
+            {
+                name: "Resident House",
+                cost: 10,
+                createMenuModel: () => {
+                    const group = new THREE.Group();
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3.5), new THREE.MeshStandardMaterial({color: 0x8B4513}));
+                    const roof = new THREE.Mesh(new THREE.ConeGeometry(2, 1.5, 4), new THREE.MeshStandardMaterial({color: 0x5a2d0c}));
+                    roof.rotation.y = Math.PI / 4;
+                    roof.position.y = 1.75;
+                    group.add(body, roof);
+                    return group;
+                },
+                createGameObject: () => {
+                     const group = new THREE.Group();
+                     const defaultColor = '#8B4513';
+                     group.userData.type = 'resident_house';
+                     group.userData.health = 200; 
+                     group.userData.color = defaultColor;
+                     
+                     const body = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3.5), new THREE.MeshPhongMaterial({color: defaultColor}));
+                     body.name = "mainBody";
+                     body.position.y = 1;
+                     const roof = new THREE.Mesh(new THREE.ConeGeometry(2, 1.5, 4), new THREE.MeshPhongMaterial({color: 0x5a2d0c}));
+                     roof.rotation.y = Math.PI / 4;
+                     roof.position.y = 2 + 0.75;
+                     group.add(body, roof);
+                     
+                     const windowMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+                     const windowGeom = new THREE.BoxGeometry(0.6, 0.5, 0.1);
+                     
+                     const window1 = new THREE.Mesh(windowGeom, windowMat);
+                     window1.position.set(-0.7, 1.2, 1.8);
+                     group.add(window1);
+
+                     const window2 = new THREE.Mesh(windowGeom, windowMat);
+                     window2.position.set(0.7, 1.2, 1.8);
+                     group.add(window2);
+                     
+                     const light = new THREE.PointLight(0xffffaa, 50, 20);
+                     light.position.y = 2;
+                     group.add(light);
+
+                     return group;
+                }
+            },
+            {
+                name: "Trade Center",
+                cost: 10,
+                createMenuModel: () => new THREE.Mesh(new THREE.BoxGeometry(2, 8, 2), new THREE.MeshStandardMaterial({color: 0x00ffff, metalness: 0.5, roughness: 0.2})),
+                createGameObject: () => {
+                    const skyscraper = new THREE.Group();
+                    skyscraper.userData.type = 'trade_center';
+                    skyscraper.userData.health = 500;
+
+                    const buildingMat = new THREE.MeshPhongMaterial({color: 0x77aaff, shininess: 90});
+                    const mainBody = new THREE.Mesh(new THREE.BoxGeometry(4, 15, 4), buildingMat);
+                    mainBody.position.y = 7.5;
+                    skyscraper.add(mainBody);
+
+                    const windowMat = new THREE.MeshBasicMaterial({ color: 0xffffdd });
+                    const windowGeom = new THREE.BoxGeometry(0.1, 0.5, 3);
+
+                    for (let y = 2; y < 14; y += 1.5) {
+                        const windowRow1 = new THREE.Mesh(windowGeom, windowMat);
+                        windowRow1.position.set(2.05, y, 0);
+                        skyscraper.add(windowRow1);
+                        
+                        const windowRow2 = new THREE.Mesh(windowGeom, windowMat);
+                        windowRow2.position.set(-2.05, y, 0);
+                        skyscraper.add(windowRow2);
+                        
+                        const windowRow3 = new THREE.Mesh(windowGeom.clone().rotateY(Math.PI/2), windowMat);
+                        windowRow3.position.set(0, y, 2.05);
+                        skyscraper.add(windowRow3);
+                        
+                        const windowRow4 = new THREE.Mesh(windowGeom.clone().rotateY(Math.PI/2), windowMat);
+                        windowRow4.position.set(0, y, -2.05);
+                        skyscraper.add(windowRow4);
+                    }
+
+                    const light1 = new THREE.PointLight(0xffffdd, 200, 40);
+                    light1.position.y = 5;
+                    skyscraper.add(light1);
+                    
+                    const light2 = new THREE.PointLight(0xffffdd, 200, 40);
+                    light2.position.y = 12;
+                    skyscraper.add(light2);
+
+                    return skyscraper;
+                }
+            },
+            {
+                name: "Resident Skyscraper",
+                cost: 25,
+                createMenuModel: () => {
+                    const group = new THREE.Group();
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 2), new THREE.MeshStandardMaterial({color: 0xc0c0c0}));
+                    const top = new THREE.Mesh(new THREE.CylinderGeometry(0, 1.5, 2, 4), new THREE.MeshStandardMaterial({color: 0xeeeeff}));
+                    top.position.y = 7;
+                    group.add(body, top);
+                    return group;
+                },
+                createGameObject: () => {
+                    const skyscraper = new THREE.Group();
+                    const defaultColor = '#e0e0e0';
+                    skyscraper.userData.type = 'resident_skyscraper';
+                    skyscraper.userData.health = 800;
+                    skyscraper.userData.annualIncome = 5;
+                    skyscraper.userData.color = defaultColor;
+
+                    const buildingMat = new THREE.MeshPhongMaterial({color: defaultColor, shininess: 80});
+                    const mainBody = new THREE.Mesh(new THREE.BoxGeometry(5, 25, 5), buildingMat);
+                    mainBody.name = "mainBody";
+                    mainBody.position.y = 12.5;
+                    skyscraper.add(mainBody);
+
+                    const windowMat = new THREE.MeshBasicMaterial({ color: 0xd4f1f9 });
+                    const windowGeom = new THREE.BoxGeometry(3.5, 0.6, 0.1);
+
+                    for (let y = 2; y < 24; y += 1.5) {
+                        const windowRow1 = new THREE.Mesh(windowGeom, windowMat);
+                        windowRow1.position.set(0, y, 2.55);
+                        skyscraper.add(windowRow1);
+                        
+                        const windowRow2 = new THREE.Mesh(windowGeom, windowMat);
+                        windowRow2.position.set(0, y, -2.55);
+                        skyscraper.add(windowRow2);
+                        
+                        const windowRow3 = new THREE.Mesh(windowGeom.clone().rotateY(Math.PI/2), windowMat);
+                        windowRow3.position.set(2.55, y, 0);
+                        skyscraper.add(windowRow3);
+                        
+                        const windowRow4 = new THREE.Mesh(windowGeom.clone().rotateY(Math.PI/2), windowMat);
+                        windowRow4.position.set(-2.55, y, 0);
+                        skyscraper.add(windowRow4);
+                    }
+
+                    const light1 = new THREE.PointLight(0xd4f1f9, 300, 60);
+                    light1.position.y = 8;
+                    skyscraper.add(light1);
+                    
+                    const light2 = new THREE.PointLight(0xd4f1f9, 300, 60);
+                    light2.position.y = 20;
+                    skyscraper.add(light2);
+
+                    return skyscraper;
+                }
+            },
+            {
+                name: "Watch Tower",
+                cost: 15,
+                createMenuModel: () => {
+                    const group = new THREE.Group();
+                    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 15, 8), new THREE.MeshStandardMaterial({color: 0x444444}));
+                    const platform = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 1, 8), new THREE.MeshStandardMaterial({color: 0x666666}));
+                    platform.position.y = 8;
+                    group.add(base, platform);
+                    return group;
+                },
+                createGameObject: () => {
+                    const towerHeight = 10;
+                    const group = new THREE.Group();
+                    group.userData.type = 'watch_tower';
+                    group.userData.health = 1000;
+                    group.userData.topY = towerHeight;
+
+                    const mainMat = new THREE.MeshPhongMaterial({color: 0x3d3d3d});
+                    
+                    const column = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, towerHeight, 10), mainMat);
+                    column.position.y = towerHeight / 2;
+                    group.add(column);
+
+                    // The platform is defined but not added to the scene, making it invisible.
+                    const platform = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 1, 16));
+                    platform.position.y = towerHeight;
+                    // group.add(platform); // This line is commented out
+                    
+                    const railingGeom = new THREE.TorusGeometry(1.4, 0.1, 8, 32);
+                    const railing = new THREE.Mesh(railingGeom, mainMat);
+                    railing.position.y = towerHeight + 0.6;
+                    railing.rotation.x = Math.PI / 2;
+                    group.add(railing);
+
+                    return group;
+                }
+            },
+        ];
+
+        init();
+        animate();
+    </script>
 </body>
 </html>
